@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1565C0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="シフト提出">
+  <title>希望シフト提出 | 本社ビル警備</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/staff.css">
+</head>
+<body>
+
+  <!-- ══ Fixed chrome ══════════════════════════════════════════════════════ -->
+
+  <header class="app-header" role="banner">
+    <div class="header-inner">
+      <span class="header-project">本社ビル警備</span>
+      <span class="header-staff">山田太郎</span>
+    </div>
+  </header>
+
+  <div class="info-bar" role="complementary">
+    <span class="info-month">2025年6月 希望シフト提出</span>
+  </div>
+
+  <!-- Admin-editable message bar: deadline + custom message from mockData.infoMessage -->
+  <div class="msg-bar" id="msgBar">
+    <span id="deadline" class="msg-deadline"></span>
+    <span id="infoMessage" class="msg-text"></span>
+  </div>
+
+  <!-- Shown only after submission -->
+  <div id="submittedBanner" class="submitted-banner" hidden aria-live="polite"></div>
+
+  <div class="progress-bar" role="status" aria-live="polite">
+    <span id="progress" class="progress-text">0 / 30 日入力済み</span>
+  </div>
+
+  <!-- ══ Calendar ═══════════════════════════════════════════════════════════ -->
+
+  <main class="calendar-wrapper" id="main">
+    <div class="calendar-grid" id="calendarGrid" role="grid" aria-label="2025年6月カレンダー">
+      <!-- Populated by calendar.js -->
+    </div>
+  </main>
+
+  <!-- ══ Action bar ════════════════════════════════════════════════════════ -->
+
+  <div class="action-bar">
+    <button id="clearBtn" class="btn-clear">クリア</button>
+    <button id="confirmBtn" class="btn-primary">確認・提出</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       MODALS
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <!-- ── 1. Shift-selection modal (per-day) ──────────────────────────────── -->
+  <div class="modal-overlay" id="shiftModal" role="dialog" aria-modal="true" aria-labelledby="shiftModalTitle" aria-hidden="true">
+    <div class="modal-sheet">
+      <div class="modal-drag-handle" aria-hidden="true"></div>
+      <div class="modal-header">
+        <button class="modal-close-btn" id="shiftModalClose" aria-label="閉じる">×</button>
+        <h2 class="modal-title" id="shiftModalTitle">日付</h2>
+        <span style="width:40px" aria-hidden="true"></span><!-- spacer -->
+      </div>
+      <div class="modal-body" id="shiftModalBody">
+        <!-- Rendered by calendar.js -->
+      </div>
+      <div class="modal-footer">
+        <div class="modal-footer-row">
+          <button class="btn-secondary" id="shiftModalClear">クリア</button>
+          <button class="btn-primary" id="shiftModalConfirm">決定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 2. Confirmation modal ────────────────────────────────────────────── -->
+  <div class="modal-overlay" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle" aria-hidden="true">
+    <div class="modal-fullsheet">
+      <div class="modal-header">
+        <button class="modal-close-btn" id="confirmModalClose" aria-label="戻る" title="戻る">←</button>
+        <h2 class="modal-title" id="confirmModalTitle">内容確認</h2>
+        <span style="width:40px" aria-hidden="true"></span>
+      </div>
+
+      <div class="confirm-meta" role="note">
+        本社ビル警備　2025年6月<br>
+        山田太郎（S001）
+      </div>
+
+      <div class="modal-body">
+        <table class="confirm-table" role="table">
+          <thead>
+            <tr>
+              <th scope="col">日付</th>
+              <th scope="col">曜日</th>
+              <th scope="col">希望シフト</th>
+            </tr>
+          </thead>
+          <tbody id="confirmTableBody">
+            <!-- Rendered by calendar.js -->
+          </tbody>
+        </table>
+
+        <!-- Copy button placed directly below the shift table -->
+        <div class="copy-section">
+          <button class="btn-copy-content" id="copyContentBtn">内容をコピー（任意）</button>
+        </div>
+
+        <div class="notes-section">
+          <label class="notes-label" for="confirmNotes">特記事項</label>
+          <textarea
+            id="confirmNotes"
+            class="notes-textarea"
+            placeholder="特記事項・連絡事項があれば入力してください"
+            rows="4"
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <!-- Admin-editable message rendered by calendar.js -->
+        <div class="admin-msg" id="adminMsg"></div>
+        <div class="modal-footer-row">
+          <button class="btn-secondary" id="confirmModalBack">← 戻る</button>
+          <button class="btn-primary btn-submit" id="submitBtn">送信する</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Success overlay ════════════════════════════════════════════════════ -->
+
+  <div class="success-overlay" id="successScreen" role="alertdialog" aria-modal="true" aria-labelledby="successTitle">
+    <div class="success-inner">
+      <div class="success-icon" aria-hidden="true">✓</div>
+      <h2 class="success-title" id="successTitle">提出完了</h2>
+      <p class="success-msg">希望シフトを提出しました</p>
+      <p class="success-time" id="successTime"></p>
+      <button class="success-close" id="successClose">閉じる</button>
+    </div>
+  </div>
+
+  <!-- ══ Toast ══════════════════════════════════════════════════════════════ -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/calendar.js"></script>
+</body>
+</html>

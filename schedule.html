@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1565C0">
+  <title>シフト一覧表 | 本社ビル警備</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+  <header class="app-header" role="banner">
+    <div class="header-inner">
+      <span class="header-project" id="headerProject">本社ビル警備</span>
+      <a href="dashboard.html" class="header-nav-link">← ダッシュボード</a>
+    </div>
+  </header>
+
+  <div class="sub-header">
+    <div class="sub-header-inner">
+      <span class="sub-header-title" id="subHeaderTitle">2025年6月 シフト一覧</span>
+      <span class="sub-header-meta" id="subHeaderMeta"></span>
+    </div>
+  </div>
+
+  <div class="project-switcher" id="projectSwitcher" role="tablist" aria-label="案件切替">
+    <!-- Rendered by schedule.js -->
+  </div>
+
+  <main class="page-body" style="padding-bottom: 60px;">
+
+    <!-- View toggle -->
+    <div class="view-toggle-bar">
+      <button class="view-btn active" data-view="staff">スタッフ別</button>
+      <button class="view-btn" data-view="shift">シフト枠別</button>
+    </div>
+
+    <!-- Filter + export row -->
+    <div class="schedule-action-bar">
+      <button class="filter-chip active" data-filter="all">全員</button>
+      <button class="filter-chip" data-filter="submitted">提出済み</button>
+      <button class="filter-chip" data-filter="unsubmitted">未提出</button>
+      <button class="btn-export" id="exportBtn">コピー</button>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend" id="legend">
+      <!-- Rendered by schedule.js -->
+    </div>
+
+    <!-- Schedule grid -->
+    <div class="grid-wrapper">
+      <table class="schedule-table" id="scheduleTable" role="grid" aria-label="シフト一覧表">
+        <!-- Rendered by schedule.js -->
+      </table>
+    </div>
+
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/schedule.js"></script>
+</body>
+</html>

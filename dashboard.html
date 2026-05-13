@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1565C0">
+  <title>管理者ダッシュボード | 本社ビル警備</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+  <header class="app-header" role="banner">
+    <div class="header-inner">
+      <span class="header-project" id="headerProject">本社ビル警備</span>
+      <div style="display:flex;gap:8px">
+        <a href="schedule.html" class="header-nav-link">一覧表</a>
+        <a href="projects.html" class="header-nav-link">案件管理</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="sub-header">
+    <div class="sub-header-inner">
+      <span class="sub-header-title" id="subHeaderTitle">2025年6月 希望シフト管理</span>
+      <span class="sub-header-meta" id="subHeaderMeta"></span>
+    </div>
+  </div>
+
+  <div class="project-switcher" id="projectSwitcher" role="tablist" aria-label="案件切替">
+    <!-- Rendered by dashboard.js -->
+  </div>
+
+  <main class="page-body">
+    <!-- Stats row -->
+    <div class="stats-bar" id="statsBar" role="status">
+      <!-- Rendered by dashboard.js -->
+    </div>
+
+    <!-- Deadline banner -->
+    <div id="deadlineBanner" class="deadline-banner"></div>
+
+    <!-- Staff list -->
+    <div class="section-heading">
+      <h2>スタッフ一覧</h2>
+      <span class="section-count" id="sectionCount"></span>
+    </div>
+
+    <div class="search-bar-wrap">
+      <input class="staff-search" id="staffSearch" type="search"
+        placeholder="氏名で検索（提出済み・未提出を含む）" autocomplete="off">
+    </div>
+
+    <div class="staff-list" id="staffList" role="list">
+      <!-- Rendered by dashboard.js -->
+    </div>
+  </main>
+
+  <!-- Staff detail overlay -->
+  <div class="detail-overlay" id="detailOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+    <div class="detail-sheet" id="detailSheet">
+      <div class="detail-header">
+        <h2 class="detail-title" id="detailTitle">詳細</h2>
+        <button class="modal-close-btn" id="detailClose" aria-label="閉じる">×</button>
+      </div>
+      <div class="detail-body" id="detailBody">
+        <!-- Rendered by dashboard.js -->
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

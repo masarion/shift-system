@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1565C0">
+  <title>案件管理 | シフト管理システム</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+  <header class="app-header" role="banner">
+    <div class="header-inner">
+      <span class="header-project">案件管理</span>
+      <a href="dashboard.html" class="header-nav-link">← ダッシュボード</a>
+    </div>
+  </header>
+
+  <!-- Project list page -->
+  <main class="page-body" id="listPage">
+    <div class="stats-bar" id="projectStats" role="status"></div>
+
+    <div class="section-heading">
+      <h2>案件一覧</h2>
+      <span class="section-count" id="projectCount"></span>
+    </div>
+
+    <button class="btn-add-project" id="addProjectBtn">＋ 新しい案件を作成</button>
+
+    <div class="project-list" id="projectList" role="list">
+      <!-- Rendered by projects.js -->
+    </div>
+  </main>
+
+  <!-- Project editor overlay -->
+  <div class="editor-overlay" id="editorOverlay" hidden>
+    <div class="editor-header">
+      <button class="btn-editor-back" id="editorBack" aria-label="戻る">←</button>
+      <span class="editor-header-title" id="editorTitle">案件を作成</span>
+      <button class="btn-editor-save" id="editorSave">保存</button>
+    </div>
+
+    <div class="editor-body">
+
+      <!-- 基本情報 -->
+      <div class="form-section">
+        <div class="form-section-title">基本情報</div>
+
+        <div class="form-row">
+          <label class="form-label" for="fldName">案件名 *</label>
+          <input class="form-input" type="text" id="fldName" placeholder="例：本社ビル警備" maxlength="50">
+        </div>
+
+        <div class="form-row">
+          <span class="form-label">対象期間（任意）</span>
+          <p class="form-hint">通常は空白状態で翌月分が表示されます。年末年始など月をまたぐ場合のみ設定してください。</p>
+          <div class="date-range-row">
+            <input class="form-input" type="date" id="fldStartDate">
+            <span class="date-range-sep">〜</span>
+            <input class="form-input" type="date" id="fldEndDate">
+          </div>
+          <p class="form-hint" style="margin-top:6px">空白のままにすると、保存時点の翌月（1日〜末日）が自動設定されます。</p>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label" for="fldDeadline">提出期限 *</label>
+          <input class="form-input" type="datetime-local" id="fldDeadline">
+        </div>
+      </div>
+
+      <!-- メッセージ -->
+      <div class="form-section">
+        <div class="form-section-title">メッセージ設定</div>
+
+        <div class="form-row">
+          <label class="form-label" for="fldInfoMsg">お知らせ（カレンダー上部）</label>
+          <textarea class="form-textarea" id="fldInfoMsg" rows="3"
+            placeholder="スタッフに表示するお知らせを入力してください"></textarea>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label" for="fldConfirmMsg">確認画面メッセージ（送信ボタン上部）</label>
+          <textarea class="form-textarea" id="fldConfirmMsg" rows="4"
+            placeholder="1行につき1メッセージを入力してください&#10;例：送信前に内容を確認してください&#10;一度送信すると取り消せません"></textarea>
+        </div>
+      </div>
+
+      <!-- シフト枠 -->
+      <div class="form-section">
+        <div class="form-section-title">シフト枠設定</div>
+        <div style="padding:8px 16px;font-size:11px;color:var(--c-text-2);background:#F5F5F5;border-bottom:1px solid var(--c-border)">
+          シフト名は長文でも入力できます。時間帯は未入力でも可。トグルで表示/非表示を切り替えられます。
+        </div>
+        <div class="shift-editor-header-row">
+          <span></span><span>シフト名（長文可）</span><span>略称</span><span>時間帯（任意）</span><span></span>
+        </div>
+        <div class="shift-editor-list" id="shiftEditorList">
+          <!-- Rendered by projects.js -->
+        </div>
+      </div>
+
+      <!-- URL / QR -->
+      <div class="form-section">
+        <div class="form-section-title">URL・QRコード</div>
+        <div class="form-row">
+          <label class="form-label" for="fldBaseUrl">ベースURL（任意）</label>
+          <input class="form-input" type="url" id="fldBaseUrl"
+            placeholder="https://example.azurestaticapps.net">
+          <p style="font-size:11px;color:var(--c-text-2);margin-top:6px">
+            空白のままにすると現在のファイルパスを使用します。<br>
+            本番環境のドメインを入力するとQRコードに反映されます。
+          </p>
+        </div>
+      </div>
+
+    </div><!-- /editor-body -->
+  </div><!-- /editor-overlay -->
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/projects.js"></script>
+</body>
+</html>
