@@ -163,21 +163,12 @@ function renderList() {
 function deleteProject(id) {
   const proj = projects.find(p => p.id === id);
   if (!proj) return;
-  // Two-tap pattern: arm the delete button
-  const btn = document.querySelector(`[data-delete="${id}"]`);
-  if (!btn) return;
-  if (btn.dataset.armed) {
-    projects = projects.filter(p => p.id !== id);
-    saveProjects(projects);
-    renderList();
-    showToast('案件を削除しました');
-    return;
-  }
-  btn.dataset.armed = '1';
-  btn.textContent = 'もう一度タップ';
-  setTimeout(() => {
-    if (btn) { delete btn.dataset.armed; btn.textContent = '削除'; }
-  }, 3000);
+  const ok = window.confirm(`「${proj.name}」を削除します。この操作は元に戻せません。`);
+  if (!ok) return;
+  projects = projects.filter(p => p.id !== id);
+  saveProjects(projects);
+  renderList();
+  showToast('案件を削除しました');
 }
 
 // ── Color palette popup ───────────────────────────────────────────────────────
