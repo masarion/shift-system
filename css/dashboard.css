@@ -965,8 +965,10 @@
   color: var(--c-primary);
   font-weight: 700;
   font-size: var(--fs-sm);
-  padding: 6px 16px;
+  padding: 8px 20px;
   border-radius: var(--r-md);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  letter-spacing: 0.02em;
 }
 
 .btn-editor-back {
@@ -1123,11 +1125,17 @@
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  border: none;
-  padding: 2px;
+  border: 2px solid rgba(0,0,0,0.15);
+  padding: 0;
   cursor: pointer;
-  background: none;
   flex-shrink: 0;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.shift-color-swatch:hover,
+.shift-color-swatch:active {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 
 .shift-editor-row .form-input {
@@ -1196,6 +1204,170 @@
   font-weight: 700;
   font-family: monospace;
   font-size: var(--fs-md);
+}
+
+/* ── Settings gear button ─────────────────────────────────────────────────── */
+
+.btn-settings-gear {
+  color: rgba(255,255,255,0.85);
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  transition: background var(--ease), color var(--ease);
+  flex-shrink: 0;
+}
+
+.btn-settings-gear:hover,
+.btn-settings-gear:active {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+}
+
+/* ── Settings overlay ─────────────────────────────────────────────────────── */
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--c-overlay);
+  z-index: 500;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.settings-overlay[hidden] { display: none; }
+
+.settings-sheet {
+  background: var(--c-surface);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  width: 100%;
+  max-width: 560px;
+  max-height: 80vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+.settings-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Editor save notice ───────────────────────────────────────────────────── */
+
+.editor-save-notice {
+  background: #FFF8E1;
+  border: 1.5px solid #FFD54F;
+  border-radius: var(--r-md);
+  padding: 11px 16px;
+  font-size: var(--fs-sm);
+  color: #5D4037;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.editor-save-notice strong {
+  color: var(--c-primary);
+}
+
+/* ── Bottom save button ───────────────────────────────────────────────────── */
+
+.btn-editor-save-bottom {
+  display: block;
+  width: 100%;
+  padding: 16px;
+  background: var(--c-primary);
+  color: #fff;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  border-radius: var(--r-md);
+  text-align: center;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  position: sticky;
+  bottom: 16px;
+  box-shadow: 0 4px 18px rgba(21,101,192,0.45);
+  transition: background var(--ease), transform 0.1s;
+}
+
+.btn-editor-save-bottom:hover {
+  background: #1976D2;
+}
+
+.btn-editor-save-bottom:active {
+  background: #0D47A1;
+  transform: scale(0.98);
+}
+
+/* ── Color picker popup ───────────────────────────────────────────────────── */
+
+.color-picker-popup {
+  position: fixed;
+  z-index: 400;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 6px 28px rgba(0,0,0,0.20);
+  border: 1px solid var(--c-border);
+  padding: 12px;
+  width: 176px;
+}
+
+.color-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.color-chip {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+}
+
+.color-chip:hover {
+  transform: scale(1.18);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.30);
+}
+
+.color-chip.active {
+  border-color: #333;
+  box-shadow: 0 0 0 2px #fff inset;
+}
+
+.color-picker-divider {
+  height: 1px;
+  background: var(--c-border);
+  margin: 0 -12px 10px;
+}
+
+.color-picker-other-btn {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--c-primary);
+  font-weight: 600;
+  border-radius: var(--r-sm);
+  background: #EEF2FF;
+  cursor: pointer;
+  transition: background var(--ease);
+}
+
+.color-picker-other-btn:hover,
+.color-picker-other-btn:active {
+  background: #C5CAE9;
 }
 
 /* ── Toast ────────────────────────────────────────────────────────────────── */

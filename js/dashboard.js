@@ -26,6 +26,45 @@ function loadAllProjects() {
   catch { return []; }
 }
 
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+const SETTINGS_KEY = 'shiftSystem_settings';
+
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function saveSettingsData(settings) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function getOrgName() {
+  return loadSettings().orgName || '';
+}
+
+function openSettings() {
+  document.getElementById('fldOrgName').value = getOrgName();
+  const overlay = document.getElementById('settingsOverlay');
+  overlay.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSettings() {
+  document.getElementById('settingsOverlay').hidden = true;
+  document.body.style.overflow = '';
+}
+
+function saveSettingsHandler() {
+  const orgName = document.getElementById('fldOrgName').value.trim();
+  const settings = loadSettings();
+  settings.orgName = orgName;
+  saveSettingsData(settings);
+  renderHeader();
+  closeSettings();
+  showToast('設定を保存しました');
+}
+
 // ── Demo submission merge ─────────────────────────────────────────────────────
 
 function buildDemoSubmissions() {
@@ -393,9 +432,11 @@ function closeDetail() {
 // ── Header ────────────────────────────────────────────────────────────────────
 
 function renderHeader() {
-  document.getElementById('headerProject').textContent = state.projectName;
-  document.getElementById('subHeaderTitle').textContent = `${state.dateInfo.label} 希望シフト管理`;
+  const orgName = getOrgName() || 'シフト管理システム';
+  document.getElementById('headerProject').textContent = orgName;
+  document.getElementById('subHeaderTitle').textContent = `${state.projectName}　${state.dateInfo.label} 希望シフト管理`;
   document.getElementById('subHeaderMeta').textContent = d.manager.name;
+  document.title = `管理者ダッシュボード | ${orgName}`;
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -419,8 +460,16 @@ function bindEvents() {
   document.getElementById('detailOverlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeDetail();
   });
+
+  document.getElementById('settingsBtn').addEventListener('click', openSettings);
+  document.getElementById('settingsClose').addEventListener('click', closeSettings);
+  document.getElementById('settingsSave').addEventListener('click', saveSettingsHandler);
+  document.getElementById('settingsOverlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeSettings();
+  });
+
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeDetail();
+    if (e.key === 'Escape') { closeDetail(); closeSettings(); }
   });
 }
 

@@ -28,6 +28,13 @@ function loadAllProjects() {
   catch { return []; }
 }
 
+function getOrgName() {
+  try {
+    const s = JSON.parse(localStorage.getItem('shiftSystem_settings') || '{}');
+    return s.orgName || '';
+  } catch { return ''; }
+}
+
 // ── Demo submissions merge ─────────────────────────────────────────────────────
 
 function buildDemoSubmissions() {
@@ -396,11 +403,13 @@ function renderCurrentView() {
 // ── Header ────────────────────────────────────────────────────────────────────
 
 function renderHeader() {
-  document.getElementById('headerProject').textContent = state.projectName;
-  document.getElementById('subHeaderTitle').textContent = `${state.dateInfo.label} シフト一覧`;
+  const orgName = getOrgName() || 'シフト管理システム';
+  document.getElementById('headerProject').textContent = orgName;
+  document.getElementById('subHeaderTitle').textContent = `${state.projectName}　${state.dateInfo.label} シフト一覧`;
   const total = state.staff.length;
   const submitted = state.staff.filter(s => state.submissionMap.has(s.id)).length;
   document.getElementById('subHeaderMeta').textContent = `提出 ${submitted}/${total} 名`;
+  document.title = `シフト一覧表 | ${orgName}`;
 }
 
 // ── Export ─────────────────────────────────────────────────────────────────────

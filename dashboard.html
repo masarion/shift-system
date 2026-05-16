@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#1565C0">
-  <title>管理者ダッシュボード | 本社ビル警備</title>
+  <title>管理者ダッシュボード | シフト管理システム</title>
   <link rel="stylesheet" href="css/common.css">
   <link rel="stylesheet" href="css/dashboard.css">
 </head>
@@ -12,10 +12,11 @@
 
   <header class="app-header" role="banner">
     <div class="header-inner">
-      <span class="header-project" id="headerProject">本社ビル警備</span>
-      <div style="display:flex;gap:8px">
+      <span class="header-project" id="headerProject">シフト管理システム</span>
+      <div style="display:flex;gap:8px;align-items:center">
         <a href="schedule.html" class="header-nav-link">一覧表</a>
         <a href="projects.html" class="header-nav-link">案件管理</a>
+        <button class="btn-settings-gear" id="settingsBtn" aria-label="システム設定" title="システム設定">⚙</button>
       </div>
     </div>
   </header>
@@ -65,6 +66,30 @@
       </div>
       <div class="detail-body" id="detailBody">
         <!-- Rendered by dashboard.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- システム設定オーバーレイ -->
+  <div class="settings-overlay" id="settingsOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="settings-sheet" id="settingsSheet">
+      <div class="detail-header">
+        <h2 class="detail-title" id="settingsTitle">システム設定</h2>
+        <button class="modal-close-btn" id="settingsClose" aria-label="閉じる">×</button>
+      </div>
+      <div class="settings-body">
+        <div class="form-section">
+          <div class="form-section-title">表示設定</div>
+          <div class="form-row">
+            <label class="form-label" for="fldOrgName">組織・拠点名</label>
+            <input class="form-input" type="text" id="fldOrgName"
+              placeholder="例：○○警備株式会社 本社" maxlength="30">
+            <p class="form-hint" style="margin-top:6px">トップページとダッシュボードのタイトルに表示されます</p>
+          </div>
+        </div>
+        <div style="padding:0 16px 16px">
+          <button class="btn-editor-save-bottom" id="settingsSave">保存する</button>
+        </div>
       </div>
     </div>
   </div>

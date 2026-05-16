@@ -12,6 +12,21 @@ const DEFAULT_SHIFT_TYPES = [
   { id: 'off',     label: '休み',    short: '休', time: '',              color: '#9E9E9E', enabled: true },
 ];
 
+// 新規作成時は同じ色設定で名前・略称・時間帯は空白
+const NEW_SHIFT_TYPES = DEFAULT_SHIFT_TYPES.map(s => ({
+  ...s, label: '', short: '', time: '',
+}));
+
+// プリセット30色（5×6グリッド）
+const PRESET_COLORS = [
+  '#F44336', '#E53935', '#C62828', '#E91E63', '#AD1457',
+  '#FF5722', '#F4511E', '#FF9800', '#FB8C00', '#FFC107',
+  '#8BC34A', '#43A047', '#2E7D32', '#009688', '#00695C',
+  '#03A9F4', '#0288D1', '#1E88E5', '#1565C0', '#00ACC1',
+  '#3F51B5', '#283593', '#673AB7', '#4527A0', '#9C27B0',
+  '#607D8B', '#455A64', '#795548', '#5D4037', '#9E9E9E',
+];
+
 // ── Storage ──────────────────────────────────────────────────────────────────
 
 function loadProjects() {
@@ -164,6 +179,94 @@ function deleteProject(id) {
   }, 3000);
 }
 
+// ── Color palette popup ───────────────────────────────────────────────────────
+
+function showColorPalette(targetBtn, currentColor, onChange) {
+  // 既存ポップアップを閉じる（同じボタンならトグルで閉じるだけ）
+  const existing = document.getElementById('colorPickerPopup');
+  if (existing) {
+    const wasSame = existing._targetBtn === targetBtn;
+    existing.remove();
+    if (wasSame) return;
+  }
+
+  const popup = document.createElement('div');
+  popup.id = 'colorPickerPopup';
+  popup._targetBtn = targetBtn;
+  popup.className = 'color-picker-popup';
+
+  // 30色グリッド
+  const grid = document.createElement('div');
+  grid.className = 'color-picker-grid';
+  PRESET_COLORS.forEach(c => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'color-chip' + (c.toLowerCase() === currentColor.toLowerCase() ? ' active' : '');
+    chip.style.background = c;
+    chip.title = c;
+    chip.addEventListener('click', e => {
+      e.stopPropagation();
+      onChange(c);
+      popup.remove();
+    });
+    grid.appendChild(chip);
+  });
+  popup.appendChild(grid);
+
+  // 区切り線
+  const divider = document.createElement('div');
+  divider.className = 'color-picker-divider';
+  popup.appendChild(divider);
+
+  // 「その他の色」ボタン
+  const otherBtn = document.createElement('button');
+  otherBtn.type = 'button';
+  otherBtn.className = 'color-picker-other-btn';
+  otherBtn.textContent = 'その他の色...';
+  otherBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    // ネイティブカラーピッカーを一時的なinputで開く
+    const floatInput = document.createElement('input');
+    floatInput.type = 'color';
+    floatInput.value = currentColor;
+    floatInput.style.cssText = 'position:fixed;top:-999px;left:-999px;opacity:0;width:0;height:0';
+    document.body.appendChild(floatInput);
+    floatInput.addEventListener('change', ev => {
+      onChange(ev.target.value);
+      document.body.removeChild(floatInput);
+    });
+    popup.remove();
+    floatInput.click();
+  });
+  popup.appendChild(otherBtn);
+
+  document.body.appendChild(popup);
+
+  // 位置計算（fixed）
+  const rect = targetBtn.getBoundingClientRect();
+  const popupW = 176;
+  let left = rect.left;
+  if (left + popupW > window.innerWidth - 8) left = window.innerWidth - popupW - 8;
+  if (left < 8) left = 8;
+  popup.style.left = left + 'px';
+
+  const popupH = 230;
+  if (rect.bottom + popupH + 8 <= window.innerHeight) {
+    popup.style.top = (rect.bottom + 6) + 'px';
+  } else {
+    popup.style.top = Math.max(8, rect.top - popupH - 6) + 'px';
+  }
+
+  // 外側クリックで閉じる
+  function closeHandler(e) {
+    if (!popup.contains(e.target) && e.target !== targetBtn) {
+      popup.remove();
+      document.removeEventListener('click', closeHandler, true);
+    }
+  }
+  setTimeout(() => document.addEventListener('click', closeHandler, true), 10);
+}
+
 // ── Editor ────────────────────────────────────────────────────────────────────
 
 function openEditor(id) {
@@ -190,7 +293,7 @@ function openEditor(id) {
     document.getElementById('fldInfoMsg').value   = '提出期限を過ぎた場合はシフト調整ができかねる場合があります。ご不明な点は管理者にご連絡ください。';
     document.getElementById('fldConfirmMsg').value = '送信ボタンを押す前に内容をよく確認してください\n一度送信すると元に戻せません。修正したい場合は速やかに管理者に連絡してください';
     document.getElementById('fldBaseUrl').value   = '';
-    editorShiftTypes = DEFAULT_SHIFT_TYPES.map(s => ({ ...s }));
+    editorShiftTypes = NEW_SHIFT_TYPES.map(s => ({ ...s }));
     editorStaff = [];
   }
 
@@ -207,13 +310,19 @@ function renderShiftEditor() {
     const row = document.createElement('div');
     row.className = 'shift-editor-row';
 
-    // Color swatch
-    const colorInput = document.createElement('input');
-    colorInput.type  = 'color';
-    colorInput.value = st.color || '#607D8B';
+    // Color swatch button → opens preset palette popup
+    const colorInput = document.createElement('button');
+    colorInput.type = 'button';
     colorInput.className = 'shift-color-swatch';
+    colorInput.style.background = st.color || '#607D8B';
     colorInput.title = '色を変更';
-    colorInput.addEventListener('input', e => { editorShiftTypes[idx].color = e.target.value; });
+    colorInput.addEventListener('click', e => {
+      e.stopPropagation();
+      showColorPalette(colorInput, editorShiftTypes[idx].color || '#607D8B', newColor => {
+        editorShiftTypes[idx].color = newColor;
+        colorInput.style.background = newColor;
+      });
+    });
 
     // Label input — long text supported
     const labelInput = document.createElement('input');
@@ -451,6 +560,7 @@ function showToast(msg, duration = 3000) {
 document.getElementById('addProjectBtn').addEventListener('click', () => openEditor(null));
 document.getElementById('editorBack').addEventListener('click', () => showPage('list'));
 document.getElementById('editorSave').addEventListener('click', saveEditor);
+document.getElementById('editorSaveBottom').addEventListener('click', saveEditor);
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
