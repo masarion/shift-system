@@ -531,3 +531,13 @@ allRealProjects = loadAllProjects();
 })();
 
 bindEvents();
+
+// ── BFキャッシュ対策 ──────────────────────────────────────────────────────────
+window.addEventListener('pageshow', e => {
+  if (!e.persisted) return;
+  allRealProjects = loadAllProjects();
+  const exists = allRealProjects.find(p => p.id === activeProjectId);
+  if (exists) switchProject(activeProjectId);
+  else if (allRealProjects.length > 0) switchProject(allRealProjects[0].id);
+  else switchProject(null);
+});

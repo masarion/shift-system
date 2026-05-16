@@ -1,0 +1,22 @@
+{
+  "routes": [
+    {
+      "route": "/*.html",
+      "headers": {
+        "Cache-Control": "no-cache, must-revalidate"
+      }
+    },
+    {
+      "route": "/js/*.js",
+      "headers": {
+        "Cache-Control": "no-cache, must-revalidate"
+      }
+    },
+    {
+      "route": "/css/*.css",
+      "headers": {
+        "Cache-Control": "no-cache, must-revalidate"
+      }
+    }
+  ]
+}

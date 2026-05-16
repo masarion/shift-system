@@ -625,6 +625,14 @@ document.getElementById('editorBack').addEventListener('click', () => showPage('
 document.getElementById('editorSave').addEventListener('click', saveEditor);
 document.getElementById('editorSaveBottom').addEventListener('click', saveEditor);
 
+// ── BFキャッシュ対策 ──────────────────────────────────────────────────────────
+window.addEventListener('pageshow', e => {
+  if (!e.persisted) return;
+  projects = loadProjects();
+  showPage('list'); // エディタが開いたままの場合もリストに戻す
+  renderList();
+});
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 showPage('list');

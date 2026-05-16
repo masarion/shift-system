@@ -503,3 +503,13 @@ allRealProjects = loadAllProjects();
 })();
 
 bindEvents();
+
+// ── BFキャッシュ対策（戻るボタンで復元された時に再初期化）────────────────────
+window.addEventListener('pageshow', e => {
+  if (!e.persisted) return; // 通常ロードは無視
+  allRealProjects = loadAllProjects();
+  const exists = allRealProjects.find(p => p.id === activeProjectId);
+  if (exists) switchProject(activeProjectId);
+  else if (allRealProjects.length > 0) switchProject(allRealProjects[0].id);
+  else switchProject(null);
+});
