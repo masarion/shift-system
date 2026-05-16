@@ -308,6 +308,7 @@ function openEditor(id) {
 
 function renderShiftEditor() {
   const container = document.getElementById('shiftEditorList');
+  if (!container) return;
   container.innerHTML = '';
 
   editorShiftTypes.forEach((st, idx) => {
@@ -399,6 +400,7 @@ function renderShiftEditor() {
 
 function renderManagerEditor() {
   const container = document.getElementById('managerEditorList');
+  if (!container) return;
   container.innerHTML = '';
 
   editorManagers.forEach((m, idx) => {
@@ -454,6 +456,7 @@ function renderManagerEditor() {
 
 function renderStaffEditor() {
   const container = document.getElementById('staffEditorList');
+  if (!container) return;
   container.innerHTML = '';
 
   editorStaff.forEach((s, idx) => {
