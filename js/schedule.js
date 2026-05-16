@@ -87,6 +87,7 @@ function buildDateInfo(proj) {
 function switchProject(id) {
   activeProjectId = id;
   activeFilter = 'all';
+  localStorage.setItem('shiftSystem_lastDashboardProject', id || '');
   document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
   document.querySelector('.filter-chip[data-filter="all"]').classList.add('active');
 
@@ -111,30 +112,58 @@ function switchProject(id) {
 
     const dateInfo = buildDateInfo(proj);
     const ym = `${dateInfo.year}${String(dateInfo.month).padStart(2, '0')}`;
-    const lsKey = `shiftSystem_${proj.id}_${ym}`;
+    const registeredStaff = proj.staff || [];
     const submissions = [];
-    try {
-      const raw = localStorage.getItem(lsKey);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        if (saved.submitted && saved.selections) {
-          submissions.push({
-            staffId: 'LOCAL',
-            submittedAt: saved.submittedAt || new Date().toISOString(),
-            notes: saved.notes || '',
-            selections: saved.selections,
-          });
-        }
-      }
-    } catch {}
 
-    state = {
-      staff: submissions.map(s => ({ id: s.staffId, name: 'このデバイス' })),
-      submissionMap: new Map(submissions.map(s => [s.staffId, s])),
-      shiftTypes: proj.shiftTypes || [],
-      dateInfo,
-      projectName: proj.name,
-    };
+    if (registeredStaff.length > 0) {
+      registeredStaff.forEach(s => {
+        const lsKey = `shiftSystem_${proj.id}_${ym}_${s.id}`;
+        try {
+          const raw = localStorage.getItem(lsKey);
+          if (raw) {
+            const saved = JSON.parse(raw);
+            if (saved.submitted && saved.selections) {
+              submissions.push({
+                staffId: s.id,
+                submittedAt: saved.submittedAt || new Date().toISOString(),
+                notes: saved.notes || '',
+                selections: saved.selections,
+              });
+            }
+          }
+        } catch {}
+      });
+      state = {
+        staff: registeredStaff,
+        submissionMap: new Map(submissions.map(s => [s.staffId, s])),
+        shiftTypes: proj.shiftTypes || [],
+        dateInfo,
+        projectName: proj.name,
+      };
+    } else {
+      const lsKey = `shiftSystem_${proj.id}_${ym}`;
+      try {
+        const raw = localStorage.getItem(lsKey);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved.submitted && saved.selections) {
+            submissions.push({
+              staffId: 'LOCAL',
+              submittedAt: saved.submittedAt || new Date().toISOString(),
+              notes: saved.notes || '',
+              selections: saved.selections,
+            });
+          }
+        }
+      } catch {}
+      state = {
+        staff: submissions.map(s => ({ id: s.staffId, name: 'このデバイス' })),
+        submissionMap: new Map(submissions.map(s => [s.staffId, s])),
+        shiftTypes: proj.shiftTypes || [],
+        dateInfo,
+        projectName: proj.name,
+      };
+    }
   }
 
   renderProjectSwitcher();
@@ -470,5 +499,17 @@ function bindEvents() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 allRealProjects = loadAllProjects();
-switchProject(null);
+
+(function () {
+  const lastId = localStorage.getItem('shiftSystem_lastDashboardProject');
+  const exists = allRealProjects.find(p => p.id === lastId);
+  if (exists) {
+    switchProject(lastId);
+  } else if (allRealProjects.length > 0) {
+    switchProject(allRealProjects[0].id);
+  } else {
+    switchProject(null);
+  }
+})();
+
 bindEvents();

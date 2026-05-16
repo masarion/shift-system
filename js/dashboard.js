@@ -84,6 +84,7 @@ function buildDateInfo(proj) {
 function switchProject(id) {
   activeProjectId = id;
   searchQuery = '';
+  localStorage.setItem('shiftSystem_lastDashboardProject', id || '');
   const searchEl = document.getElementById('staffSearch');
   if (searchEl) searchEl.value = '';
 
@@ -110,32 +111,63 @@ function switchProject(id) {
 
     const dateInfo = buildDateInfo(proj);
     const ym = `${dateInfo.year}${String(dateInfo.month).padStart(2, '0')}`;
-    const lsKey = `shiftSystem_${proj.id}_${ym}`;
+    const registeredStaff = proj.staff || [];
     const submissions = [];
-    try {
-      const raw = localStorage.getItem(lsKey);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        if (saved.submitted && saved.selections) {
-          submissions.push({
-            staffId: 'LOCAL',
-            submittedAt: saved.submittedAt || new Date().toISOString(),
-            notes: saved.notes || '',
-            selections: saved.selections,
-            _fromLocal: true,
-          });
-        }
-      }
-    } catch {}
 
-    state = {
-      staff: submissions.map(s => ({ id: s.staffId, name: 'このデバイス' })),
-      submissionMap: new Map(submissions.map(s => [s.staffId, s])),
-      shiftTypes: proj.shiftTypes || [],
-      dateInfo,
-      deadline: new Date(proj.deadline),
-      projectName: proj.name,
-    };
+    if (registeredStaff.length > 0) {
+      // Load per-staff submissions
+      registeredStaff.forEach(s => {
+        const lsKey = `shiftSystem_${proj.id}_${ym}_${s.id}`;
+        try {
+          const raw = localStorage.getItem(lsKey);
+          if (raw) {
+            const saved = JSON.parse(raw);
+            if (saved.submitted && saved.selections) {
+              submissions.push({
+                staffId: s.id,
+                submittedAt: saved.submittedAt || new Date().toISOString(),
+                notes: saved.notes || '',
+                selections: saved.selections,
+              });
+            }
+          }
+        } catch {}
+      });
+      state = {
+        staff: registeredStaff,
+        submissionMap: new Map(submissions.map(s => [s.staffId, s])),
+        shiftTypes: proj.shiftTypes || [],
+        dateInfo,
+        deadline: new Date(proj.deadline),
+        projectName: proj.name,
+      };
+    } else {
+      // No registered staff — show device submission if any
+      const lsKey = `shiftSystem_${proj.id}_${ym}`;
+      try {
+        const raw = localStorage.getItem(lsKey);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved.submitted && saved.selections) {
+            submissions.push({
+              staffId: 'LOCAL',
+              submittedAt: saved.submittedAt || new Date().toISOString(),
+              notes: saved.notes || '',
+              selections: saved.selections,
+              _fromLocal: true,
+            });
+          }
+        }
+      } catch {}
+      state = {
+        staff: submissions.map(s => ({ id: s.staffId, name: 'このデバイス' })),
+        submissionMap: new Map(submissions.map(s => [s.staffId, s])),
+        shiftTypes: proj.shiftTypes || [],
+        dateInfo,
+        deadline: new Date(proj.deadline),
+        projectName: proj.name,
+      };
+    }
   }
 
   renderProjectSwitcher();
@@ -267,7 +299,7 @@ function renderStaffList() {
       </div>
       <div class="staff-row-name">${staff.name}</div>
       <div class="staff-row-sub">
-        ${staff.id}
+        ${staff.code ? staff.code : staff.id}
         ${isSubmitted ? `<br>${formatDateTime(sub.submittedAt)}・${filled}/${daysInMonth}日` : ''}
         ${sub?.notes ? ` 💬` : ''}
         ${sub?._fromLocal ? `<br><span style="color:#1565C0;font-size:10px">📱実データ</span>` : ''}
@@ -395,5 +427,18 @@ function bindEvents() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 allRealProjects = loadAllProjects();
-switchProject(null);
+
+// Restore last selected project, or default to first real project
+(function () {
+  const lastId = localStorage.getItem('shiftSystem_lastDashboardProject');
+  const exists = allRealProjects.find(p => p.id === lastId);
+  if (exists) {
+    switchProject(lastId);
+  } else if (allRealProjects.length > 0) {
+    switchProject(allRealProjects[0].id);
+  } else {
+    switchProject(null);
+  }
+})();
+
 bindEvents();

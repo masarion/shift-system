@@ -32,6 +32,7 @@ function generateId() {
 let projects = loadProjects();
 let editingId = null; // null = new project
 let editorShiftTypes = []; // working copy of shift types in editor
+let editorStaff = [];      // working copy of staff list in editor
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,7 @@ function openEditor(id) {
     document.getElementById('fldConfirmMsg').value = (proj.confirmMessage || []).join('\n');
     document.getElementById('fldBaseUrl').value    = proj.baseUrl || '';
     editorShiftTypes = proj.shiftTypes.map(s => ({ ...s }));
+    editorStaff = (proj.staff || []).map(s => ({ ...s }));
   } else {
     document.getElementById('fldName').value      = '';
     document.getElementById('fldStartDate').value = '';
@@ -189,9 +191,11 @@ function openEditor(id) {
     document.getElementById('fldConfirmMsg').value = '送信ボタンを押す前に内容をよく確認してください\n一度送信すると元に戻せません。修正したい場合は速やかに管理者に連絡してください';
     document.getElementById('fldBaseUrl').value   = '';
     editorShiftTypes = DEFAULT_SHIFT_TYPES.map(s => ({ ...s }));
+    editorStaff = [];
   }
 
   renderShiftEditor();
+  renderStaffEditor();
   showPage('editor');
 }
 
@@ -280,6 +284,61 @@ function renderShiftEditor() {
   container.appendChild(addBtn);
 }
 
+function renderStaffEditor() {
+  const container = document.getElementById('staffEditorList');
+  container.innerHTML = '';
+
+  editorStaff.forEach((s, idx) => {
+    const row = document.createElement('div');
+    row.className = 'staff-editor-row';
+
+    // Staff code input
+    const codeInput = document.createElement('input');
+    codeInput.type = 'text';
+    codeInput.value = s.code || '';
+    codeInput.className = 'form-input staff-code-input';
+    codeInput.placeholder = 'S001';
+    codeInput.maxLength = 10;
+    codeInput.addEventListener('input', e => { editorStaff[idx].code = e.target.value.trim(); });
+
+    // Name input
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = s.name || '';
+    nameInput.className = 'form-input';
+    nameInput.placeholder = '例：山田 太郎';
+    nameInput.maxLength = 20;
+    nameInput.addEventListener('input', e => { editorStaff[idx].name = e.target.value; });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'shift-row-delete';
+    deleteBtn.textContent = '×';
+    deleteBtn.title = 'このスタッフを削除';
+    deleteBtn.addEventListener('click', () => {
+      editorStaff.splice(idx, 1);
+      renderStaffEditor();
+    });
+
+    row.appendChild(codeInput);
+    row.appendChild(nameInput);
+    row.appendChild(deleteBtn);
+    container.appendChild(row);
+  });
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'shift-row-add-btn';
+  addBtn.textContent = '＋ スタッフを追加';
+  addBtn.addEventListener('click', () => {
+    editorStaff.push({ id: `staff-${Date.now()}`, code: '', name: '' });
+    renderStaffEditor();
+    const rows = container.querySelectorAll('.staff-editor-row');
+    rows[rows.length - 1]?.querySelector('.staff-code-input')?.focus();
+  });
+  container.appendChild(addBtn);
+}
+
 function saveEditor() {
   const name      = document.getElementById('fldName').value.trim();
   const startDate = document.getElementById('fldStartDate').value;
@@ -319,8 +378,18 @@ function saveEditor() {
     periodFields = { targetMonth: { year: next.getFullYear(), month: next.getMonth() + 1 } };
   }
 
+  // Validate duplicate codes
+  const codes = editorStaff.map(s => (s.code || '').trim()).filter(Boolean);
+  if (codes.length !== new Set(codes).size) {
+    showToast('スタッフコードが重複しています'); return;
+  }
+
+  const staff = editorStaff
+    .filter(s => s.name.trim())
+    .map(s => ({ id: s.id, code: (s.code || '').trim(), name: s.name.trim() }));
+
   const base = {
-    name, deadline, shiftTypes,
+    name, deadline, shiftTypes, staff,
     infoMessage: infoMsg, confirmMessage: confirmMsg,
     baseUrl, updatedAt: new Date().toISOString(),
   };

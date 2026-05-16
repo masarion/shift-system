@@ -1171,6 +1171,33 @@
 
 .shift-row-add-btn:active { background: #EEF2FF; }
 
+/* ── Staff editor (projects.html) ────────────────────────────────────────── */
+
+.staff-editor-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.staff-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.staff-editor-row .form-input {
+  flex: 1;
+}
+
+.staff-code-input {
+  flex: 0 0 80px !important;
+  text-align: center;
+  font-weight: 700;
+  font-family: monospace;
+  font-size: var(--fs-md);
+}
+
 /* ── Toast ────────────────────────────────────────────────────────────────── */
 
 .toast {

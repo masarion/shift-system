@@ -44,6 +44,7 @@ function resolveProject() {
           ...(targetMonth  ? { targetMonth  } : {}),
           deadline:       new Date(proj.deadline),
           shiftTypes:     proj.shiftTypes,
+          staffList:      proj.staff || [],
           infoMessage:    proj.infoMessage  ?? MOCK_DATA.infoMessage,
           confirmMessage: proj.confirmMessage ?? MOCK_DATA.confirmMessage,
         },
@@ -54,11 +55,12 @@ function resolveProject() {
   return { data: MOCK_DATA, storageKey: 'shiftSystem_PRJ001_202506' };
 }
 
-const { data: RESOLVED_DATA, storageKey: STORAGE_KEY } = resolveProject();
+const { data: RESOLVED_DATA, storageKey: BASE_STORAGE_KEY } = resolveProject();
 
 class CalendarApp {
   constructor() {
     this.data = RESOLVED_DATA;
+    this.storageKey = BASE_STORAGE_KEY;
     this.selections = {};      // { 'YYYY-MM-DD': string[] }
     this.notes = '';
     this.submitted = false;
@@ -66,15 +68,71 @@ class CalendarApp {
     this.selectedDate = null;  // currently editing date
     this.tempSelections = [];  // scratch pad for shift modal
 
+    this._init();
+  }
+
+  async _init() {
+    if (this.data.staffList && this.data.staffList.length > 0) {
+      await this._showStaffPicker();
+    }
     this._load();
     this._render();
     this._bindEvents();
   }
 
+  _showStaffPicker() {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.className = 'staff-picker-overlay';
+
+      const sheet = document.createElement('div');
+      sheet.className = 'staff-picker-sheet';
+      sheet.innerHTML = `
+        <div class="staff-picker-title">${this.data.project.name}</div>
+        <p class="staff-picker-sub">スタッフコードを入力してください</p>
+        <div class="staff-picker-input-wrap">
+          <input class="staff-picker-input" id="staffCodeInput" type="text"
+            placeholder="例：S001" maxlength="10" autocomplete="off" autocapitalize="characters">
+          <p class="staff-picker-error" id="staffPickerError" hidden>コードが見つかりません</p>
+          <button class="staff-picker-confirm" id="staffPickerConfirm">確認</button>
+        </div>
+        <div class="staff-picker-hint">スタッフコードは管理者から通知されたものを入力してください</div>
+      `;
+      overlay.appendChild(sheet);
+      document.body.appendChild(overlay);
+
+      const input = overlay.querySelector('#staffCodeInput');
+      const error = overlay.querySelector('#staffPickerError');
+      const confirmBtn = overlay.querySelector('#staffPickerConfirm');
+
+      const tryConfirm = () => {
+        const code = input.value.trim();
+        const found = this.data.staffList.find(
+          s => (s.code || s.id).toLowerCase() === code.toLowerCase()
+        );
+        if (!found) {
+          error.hidden = false;
+          input.focus();
+          return;
+        }
+        this.data.staff = { id: found.id, name: found.name, code: found.code };
+        this.storageKey = `${BASE_STORAGE_KEY}_${found.id}`;
+        overlay.remove();
+        resolve();
+      };
+
+      confirmBtn.addEventListener('click', tryConfirm);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') tryConfirm(); });
+      input.addEventListener('input', () => { error.hidden = true; });
+
+      requestAnimationFrame(() => input.focus());
+    });
+  }
+
   // ─── Persistence ────────────────────────────────────────────────────────────
 
   _load() {
-    const saved = StorageManager.load(STORAGE_KEY);
+    const saved = StorageManager.load(this.storageKey);
     if (!saved) return;
     this.selections = saved.selections || {};
     this.notes = saved.notes || '';
@@ -88,7 +146,7 @@ class CalendarApp {
       notes: this.notes,
       submitted: this.submitted,
       submittedAt: this.submittedAt,
-    }, STORAGE_KEY);
+    }, this.storageKey);
   }
 
   // ─── Top-level render ────────────────────────────────────────────────────────
@@ -618,23 +676,12 @@ class CalendarApp {
       document.getElementById('successScreen').classList.remove('active');
     });
 
-    // Clear all data — two-tap pattern (no confirm dialog, works in all browsers)
+    // Clear all data — confirmation dialog
     document.getElementById('clearBtn').addEventListener('click', () => {
-      const btn = document.getElementById('clearBtn');
-      if (this._clearArmed) {
-        clearTimeout(this._clearTimer);
-        StorageManager.clear(STORAGE_KEY);
-        location.reload();
-        return;
-      }
-      this._clearArmed = true;
-      btn.textContent = 'もう一度タップ';
-      btn.classList.add('btn-clear--armed');
-      this._clearTimer = setTimeout(() => {
-        this._clearArmed = false;
-        btn.textContent = 'クリア';
-        btn.classList.remove('btn-clear--armed');
-      }, 3000);
+      const ok = window.confirm('「OK」をタップすると入力したシフト希望をすべて削除します。この操作は元に戻せません。');
+      if (!ok) return;
+      StorageManager.clear(this.storageKey);
+      location.reload();
     });
 
     // Click outside modal to close
