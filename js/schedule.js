@@ -16,6 +16,7 @@ let state = {
   shiftTypes: [],
   dateInfo: { label: '', year: 0, month: 0, daysInMonth: 0, dates: [], isMultiMonth: false },
   projectName: '',
+  managers: [],
 };
 
 let activeFilter = 'all';
@@ -112,6 +113,7 @@ function switchProject(id) {
       shiftTypes: d.shiftTypes,
       dateInfo: { label: `${year}年${month}月`, year, month, daysInMonth, dates, isMultiMonth: false },
       projectName: d.project.name,
+      managers: [],
     };
   } else {
     const proj = allRealProjects.find(p => p.id === id);
@@ -146,6 +148,7 @@ function switchProject(id) {
         shiftTypes: proj.shiftTypes || [],
         dateInfo,
         projectName: proj.name,
+        managers: proj.managers || [],
       };
     } else {
       const lsKey = `shiftSystem_${proj.id}_${ym}`;
@@ -169,6 +172,7 @@ function switchProject(id) {
         shiftTypes: proj.shiftTypes || [],
         dateInfo,
         projectName: proj.name,
+        managers: proj.managers || [],
       };
     }
   }
@@ -405,10 +409,15 @@ function renderCurrentView() {
 function renderHeader() {
   const orgName = getOrgName() || 'シフト管理システム';
   document.getElementById('headerProject').textContent = orgName;
-  document.getElementById('subHeaderTitle').textContent = `${state.projectName}　${state.dateInfo.label} シフト一覧`;
+  document.getElementById('subHeaderTitle').textContent =
+    `${state.projectName}　${state.dateInfo.label} シフト一覧`;
+  const managers = state.managers || [];
   const total = state.staff.length;
   const submitted = state.staff.filter(s => state.submissionMap.has(s.id)).length;
-  document.getElementById('subHeaderMeta').textContent = `提出 ${submitted}/${total} 名`;
+  const managerStr = managers.length > 0
+    ? '担当：' + managers.map(m => m.role ? `${m.name}（${m.role}）` : m.name).join('　') + '　'
+    : '';
+  document.getElementById('subHeaderMeta').textContent = `${managerStr}提出 ${submitted}/${total} 名`;
   document.title = `シフト一覧表 | ${orgName}`;
 }
 

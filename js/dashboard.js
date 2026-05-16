@@ -17,6 +17,7 @@ let state = {
   dateInfo: { label: '', year: 0, month: 0, daysInMonth: 0, dates: [] },
   deadline: null,
   projectName: '',
+  managers: [],
 };
 
 // ── Storage ───────────────────────────────────────────────────────────────────
@@ -44,7 +45,9 @@ function getOrgName() {
 }
 
 function openSettings() {
-  document.getElementById('fldOrgName').value = getOrgName();
+  const settings = loadSettings();
+  document.getElementById('fldOrgName').value = settings.orgName || '';
+  document.getElementById('fldSystemAdmin').value = settings.systemAdmin || '';
   const overlay = document.getElementById('settingsOverlay');
   overlay.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -56,9 +59,11 @@ function closeSettings() {
 }
 
 function saveSettingsHandler() {
-  const orgName = document.getElementById('fldOrgName').value.trim();
+  const orgName     = document.getElementById('fldOrgName').value.trim();
+  const systemAdmin = document.getElementById('fldSystemAdmin').value.trim();
   const settings = loadSettings();
-  settings.orgName = orgName;
+  settings.orgName     = orgName;
+  settings.systemAdmin = systemAdmin;
   saveSettingsData(settings);
   renderHeader();
   closeSettings();
@@ -143,6 +148,7 @@ function switchProject(id) {
       dateInfo: { label: `${year}年${month}月`, year, month, daysInMonth, dates },
       deadline: d.deadline,
       projectName: d.project.name,
+      managers: [],
     };
   } else {
     const proj = allRealProjects.find(p => p.id === id);
@@ -179,6 +185,7 @@ function switchProject(id) {
         dateInfo,
         deadline: new Date(proj.deadline),
         projectName: proj.name,
+        managers: proj.managers || [],
       };
     } else {
       // No registered staff — show device submission if any
@@ -205,6 +212,7 @@ function switchProject(id) {
         dateInfo,
         deadline: new Date(proj.deadline),
         projectName: proj.name,
+        managers: proj.managers || [],
       };
     }
   }
@@ -434,8 +442,12 @@ function closeDetail() {
 function renderHeader() {
   const orgName = getOrgName() || 'シフト管理システム';
   document.getElementById('headerProject').textContent = orgName;
-  document.getElementById('subHeaderTitle').textContent = `${state.projectName}　${state.dateInfo.label} 希望シフト管理`;
-  document.getElementById('subHeaderMeta').textContent = d.manager.name;
+  document.getElementById('subHeaderTitle').textContent =
+    `${state.projectName}　${state.dateInfo.label} 希望シフト管理`;
+  const managers = state.managers || [];
+  document.getElementById('subHeaderMeta').textContent = managers.length > 0
+    ? '担当：' + managers.map(m => m.role ? `${m.name}（${m.role}）` : m.name).join('　')
+    : '';
   document.title = `管理者ダッシュボード | ${orgName}`;
 }
 

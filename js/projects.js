@@ -48,6 +48,7 @@ let projects = loadProjects();
 let editingId = null; // null = new project
 let editorShiftTypes = []; // working copy of shift types in editor
 let editorStaff = [];      // working copy of staff list in editor
+let editorManagers = [];   // working copy of managers in editor
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -285,6 +286,7 @@ function openEditor(id) {
     document.getElementById('fldBaseUrl').value    = proj.baseUrl || '';
     editorShiftTypes = proj.shiftTypes.map(s => ({ ...s }));
     editorStaff = (proj.staff || []).map(s => ({ ...s }));
+    editorManagers = (proj.managers || []).map(m => ({ ...m }));
   } else {
     document.getElementById('fldName').value      = '';
     document.getElementById('fldStartDate').value = '';
@@ -295,9 +297,11 @@ function openEditor(id) {
     document.getElementById('fldBaseUrl').value   = '';
     editorShiftTypes = NEW_SHIFT_TYPES.map(s => ({ ...s }));
     editorStaff = [];
+    editorManagers = [];
   }
 
   renderShiftEditor();
+  renderManagerEditor();
   renderStaffEditor();
   showPage('editor');
 }
@@ -389,6 +393,61 @@ function renderShiftEditor() {
     const rows = container.querySelectorAll('.shift-editor-row');
     const last = rows[rows.length - 1];
     last?.querySelector('.form-input')?.focus();
+  });
+  container.appendChild(addBtn);
+}
+
+function renderManagerEditor() {
+  const container = document.getElementById('managerEditorList');
+  container.innerHTML = '';
+
+  editorManagers.forEach((m, idx) => {
+    const row = document.createElement('div');
+    row.className = 'manager-editor-row';
+
+    // 役割入力（任意）
+    const roleInput = document.createElement('input');
+    roleInput.type = 'text';
+    roleInput.value = m.role || '';
+    roleInput.className = 'form-input manager-role-input';
+    roleInput.placeholder = '例：主任';
+    roleInput.maxLength = 10;
+    roleInput.addEventListener('input', e => { editorManagers[idx].role = e.target.value; });
+
+    // 氏名入力
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = m.name || '';
+    nameInput.className = 'form-input';
+    nameInput.placeholder = '例：鈴木 太郎';
+    nameInput.maxLength = 20;
+    nameInput.addEventListener('input', e => { editorManagers[idx].name = e.target.value; });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'shift-row-delete';
+    deleteBtn.textContent = '×';
+    deleteBtn.title = 'この担当者を削除';
+    deleteBtn.addEventListener('click', () => {
+      editorManagers.splice(idx, 1);
+      renderManagerEditor();
+    });
+
+    row.appendChild(roleInput);
+    row.appendChild(nameInput);
+    row.appendChild(deleteBtn);
+    container.appendChild(row);
+  });
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'shift-row-add-btn';
+  addBtn.textContent = '＋ 担当者を追加';
+  addBtn.addEventListener('click', () => {
+    editorManagers.push({ id: `mgr-${Date.now()}`, role: '', name: '' });
+    renderManagerEditor();
+    const rows = container.querySelectorAll('.manager-editor-row');
+    rows[rows.length - 1]?.querySelector('.manager-role-input')?.focus();
   });
   container.appendChild(addBtn);
 }
@@ -497,8 +556,12 @@ function saveEditor() {
     .filter(s => s.name.trim())
     .map(s => ({ id: s.id, code: (s.code || '').trim(), name: s.name.trim() }));
 
+  const managers = editorManagers
+    .filter(m => m.name.trim())
+    .map(m => ({ id: m.id, role: (m.role || '').trim(), name: m.name.trim() }));
+
   const base = {
-    name, deadline, shiftTypes, staff,
+    name, deadline, shiftTypes, staff, managers,
     infoMessage: infoMsg, confirmMessage: confirmMsg,
     baseUrl, updatedAt: new Date().toISOString(),
   };

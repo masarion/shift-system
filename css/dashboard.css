@@ -1370,6 +1370,41 @@
   background: #C5CAE9;
 }
 
+/* ── Manager editor (projects.html) ──────────────────────────────────────── */
+
+.manager-editor-header-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 32px;
+  gap: 8px;
+  padding: 6px 16px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--c-text-2);
+  background: #F5F5F5;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.manager-editor-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.manager-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.manager-editor-row .form-input {
+  flex: 1;
+}
+
+.manager-role-input {
+  flex: 0 0 102px !important;
+}
+
 /* ── Toast ────────────────────────────────────────────────────────────────── */
 
 .toast {
