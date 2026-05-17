@@ -522,9 +522,14 @@
   border-color: var(--c-primary);
 }
 
-.btn-export {
+.export-btn-group {
+  display: flex;
+  gap: 6px;
   margin-left: auto;
-  padding: 6px 16px;
+}
+
+.btn-export {
+  padding: 6px 14px;
   border-radius: var(--r-md);
   font-size: var(--fs-sm);
   font-weight: 700;
@@ -535,6 +540,14 @@
 }
 
 .btn-export:active { background: #E3F2FD; }
+
+.btn-export.btn-excel {
+  background: #E8F5E9;
+  color: #2E7D32;
+  border-color: #43A047;
+}
+
+.btn-export.btn-excel:active { background: #C8E6C9; }
 
 /* ── View toggle ──────────────────────────────────────────────────────────── */
 
@@ -1458,3 +1471,26 @@
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* ── リアルタイム更新バッジ ────────────────────────────────────────────────── */
+
+.realtime-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #2E7D32;
+  background: #E8F5E9;
+  border: 1px solid #A5D6A7;
+  border-radius: 99px;
+  padding: 2px 10px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.realtime-badge.visible { opacity: 1; }
+
+/* schedule.html の action bar 内での配置 */
+.schedule-action-bar .realtime-badge { margin-left: 4px; }
+/* dashboard.html の section-heading 内での配置 */
+.section-heading .realtime-badge { margin-left: 8px; }

@@ -7,7 +7,7 @@
 
 import { db } from './firebase-config.js';
 import {
-  collection, doc, getDocs, getDoc, setDoc, deleteDoc,
+  collection, doc, getDocs, getDoc, setDoc, deleteDoc, onSnapshot,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 // ── Projects ──────────────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ export async function dbClearSubmission(projectId, key) {
   await deleteDoc(doc(db, 'projects', projectId, 'submissions', key));
 }
 
-/** プロジェクトの全提出データを取得 */
+/** プロジェクトの全提出データを取得（一回限り） */
 export async function dbLoadProjectSubmissions(projectId) {
   try {
     const snap = await getDocs(collection(db, 'projects', projectId, 'submissions'));
@@ -90,4 +90,18 @@ export async function dbLoadProjectSubmissions(projectId) {
     console.error('[db] loadProjectSubmissions:', e);
     return [];
   }
+}
+
+/**
+ * 提出データをリアルタイム監視する。
+ * @param {string} projectId
+ * @param {function} onUpdate - Firestore QuerySnapshot を受け取るコールバック
+ * @returns {function} unsubscribe 関数
+ */
+export function dbSubscribeSubmissions(projectId, onUpdate) {
+  return onSnapshot(
+    collection(db, 'projects', projectId, 'submissions'),
+    onUpdate,
+    e => console.error('[db] subscribeSubmissions:', e)
+  );
 }

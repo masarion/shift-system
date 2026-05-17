@@ -41,7 +41,11 @@
       <button class="filter-chip active" data-filter="all">全員</button>
       <button class="filter-chip" data-filter="submitted">提出済み</button>
       <button class="filter-chip" data-filter="unsubmitted">未提出</button>
-      <button class="btn-export" id="exportBtn">コピー</button>
+      <div class="export-btn-group">
+        <button class="btn-export" id="exportBtn">テキスト</button>
+        <button class="btn-export btn-excel" id="excelBtn">Excelコピー</button>
+      </div>
+      <span class="realtime-badge" id="realtimeBadge">● 更新</span>
     </div>
 
     <!-- Legend -->

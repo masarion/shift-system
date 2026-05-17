@@ -1,8 +1,8 @@
-// schedule.js — 月次シフト一覧ページ（Firestore バックエンド）
+// schedule.js — 月次シフト一覧ページ（Firestore リアルタイム対応 + Excelコピー）
 
 import { MOCK_DASHBOARD } from './mockDashboard.js';
 import {
-  dbLoadProjects, dbLoadSettings, dbLoadProjectSubmissions,
+  dbLoadProjects, dbLoadSettings, dbSubscribeSubmissions,
 } from './db.js';
 
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
@@ -10,9 +10,10 @@ const d = MOCK_DASHBOARD;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let activeProjectId = null;
-let allRealProjects = [];
-let cachedOrgName   = '';
+let activeProjectId      = null;
+let allRealProjects      = [];
+let cachedOrgName        = '';
+let unsubscribeSubmissions = null;
 
 let state = {
   staff: [],
@@ -54,9 +55,50 @@ function buildDateInfo(proj) {
   return { label: `${year}年${month}月`, year, month, daysInMonth, dates, isMultiMonth: false };
 }
 
+// ── 提出データを state に反映 ─────────────────────────────────────────────────
+
+function applySubmissions(registeredStaff, ym, snap) {
+  const allSubs = [];
+  snap.forEach(doc => allSubs.push({ key: doc.id, ...doc.data() }));
+
+  if (registeredStaff.length > 0) {
+    const subMap = new Map();
+    registeredStaff.forEach(s => {
+      const key = `${ym}_${s.id}`;
+      const sub = allSubs.find(r => r.key === key);
+      if (sub && sub.submitted && sub.selections) {
+        subMap.set(s.id, {
+          staffId:     s.id,
+          submittedAt: sub.submittedAt || new Date().toISOString(),
+          notes:       sub.notes || '',
+          selections:  sub.selections,
+        });
+      }
+    });
+    state.staff        = registeredStaff;
+    state.submissionMap = subMap;
+  } else {
+    const sub = allSubs.find(r => r.key === ym);
+    if (sub && sub.submitted && sub.selections) {
+      state.staff        = [{ id: 'LOCAL', name: 'このデバイス' }];
+      state.submissionMap = new Map([['LOCAL', {
+        staffId:     'LOCAL',
+        submittedAt: sub.submittedAt || new Date().toISOString(),
+        notes:       sub.notes || '',
+        selections:  sub.selections,
+      }]]);
+    } else {
+      state.staff        = [];
+      state.submissionMap = new Map();
+    }
+  }
+}
+
 // ── Switch project ─────────────────────────────────────────────────────────────
 
-async function switchProject(id) {
+function switchProject(id) {
+  if (unsubscribeSubmissions) { unsubscribeSubmissions(); unsubscribeSubmissions = null; }
+
   activeProjectId = id;
   activeFilter = 'all';
   localStorage.setItem('shiftSystem_lastDashboardProject', id || '');
@@ -64,7 +106,7 @@ async function switchProject(id) {
   document.querySelector('.filter-chip[data-filter="all"]').classList.add('active');
 
   if (!id) {
-    // デモモード — モックデータのみ使用
+    // デモモード
     const { year, month } = d.targetMonth;
     const daysInMonth = new Date(year, month, 0).getDate();
     const dates = [];
@@ -79,65 +121,52 @@ async function switchProject(id) {
       projectName: d.project.name,
       managers: [],
     };
-  } else {
-    const proj = allRealProjects.find(p => p.id === id);
-    if (!proj) return;
-
-    const dateInfo = buildDateInfo(proj);
-    const ym = `${dateInfo.year}${String(dateInfo.month).padStart(2, '0')}`;
-    const registeredStaff = proj.staff || [];
-
-    // Firestoreから提出データを取得
-    const allSubs = await dbLoadProjectSubmissions(id);
-    const submissions = [];
-
-    if (registeredStaff.length > 0) {
-      registeredStaff.forEach(s => {
-        const key = `${ym}_${s.id}`;
-        const sub = allSubs.find(r => r.key === key);
-        if (sub && sub.submitted && sub.selections) {
-          submissions.push({
-            staffId: s.id,
-            submittedAt: sub.submittedAt || new Date().toISOString(),
-            notes: sub.notes || '',
-            selections: sub.selections,
-          });
-        }
-      });
-      state = {
-        staff: registeredStaff,
-        submissionMap: new Map(submissions.map(s => [s.staffId, s])),
-        shiftTypes: proj.shiftTypes || [],
-        dateInfo,
-        projectName: proj.name,
-        managers: proj.managers || [],
-      };
-    } else {
-      const key = ym;
-      const sub = allSubs.find(r => r.key === key);
-      if (sub && sub.submitted && sub.selections) {
-        submissions.push({
-          staffId: 'LOCAL',
-          submittedAt: sub.submittedAt || new Date().toISOString(),
-          notes: sub.notes || '',
-          selections: sub.selections,
-        });
-      }
-      state = {
-        staff: submissions.map(s => ({ id: s.staffId, name: 'このデバイス' })),
-        submissionMap: new Map(submissions.map(s => [s.staffId, s])),
-        shiftTypes: proj.shiftTypes || [],
-        dateInfo,
-        projectName: proj.name,
-        managers: proj.managers || [],
-      };
-    }
+    renderProjectSwitcher();
+    renderHeader();
+    renderLegend();
+    renderCurrentView();
+    return;
   }
+
+  const proj = allRealProjects.find(p => p.id === id);
+  if (!proj) return;
+
+  const dateInfo        = buildDateInfo(proj);
+  const ym              = `${dateInfo.year}${String(dateInfo.month).padStart(2, '0')}`;
+  const registeredStaff = proj.staff || [];
+
+  // 初期表示
+  state = {
+    staff: registeredStaff,
+    submissionMap: new Map(),
+    shiftTypes: proj.shiftTypes || [],
+    dateInfo,
+    projectName: proj.name,
+    managers: proj.managers || [],
+  };
 
   renderProjectSwitcher();
   renderHeader();
   renderLegend();
   renderCurrentView();
+
+  // リアルタイムリスナー
+  unsubscribeSubmissions = dbSubscribeSubmissions(id, snap => {
+    applySubmissions(registeredStaff, ym, snap);
+    renderHeader();
+    renderCurrentView();
+    showRealtimeBadge();
+  });
+}
+
+// ── リアルタイム更新バッジ ─────────────────────────────────────────────────────
+
+function showRealtimeBadge() {
+  const badge = document.getElementById('realtimeBadge');
+  if (!badge) return;
+  badge.classList.add('visible');
+  clearTimeout(badge._timer);
+  badge._timer = setTimeout(() => badge.classList.remove('visible'), 2000);
 }
 
 // ── Project switcher ──────────────────────────────────────────────────────────
@@ -174,8 +203,21 @@ function dateLabel(ds) {
     : `${d0.getDate()}`;
 }
 
+function dateLabelFull(ds) {
+  const d0 = new Date(ds + 'T00:00:00');
+  return `${d0.getMonth() + 1}/${d0.getDate()}(${DAY_NAMES[d0.getDay()]})`;
+}
+
 function dowOf(ds) {
   return new Date(ds + 'T00:00:00').getDay();
+}
+
+function filteredStaff() {
+  return state.staff.filter(s => {
+    if (activeFilter === 'submitted')   return state.submissionMap.has(s.id);
+    if (activeFilter === 'unsubmitted') return !state.submissionMap.has(s.id);
+    return true;
+  });
 }
 
 // ── Render legend ─────────────────────────────────────────────────────────────
@@ -184,21 +226,18 @@ function renderLegend() {
   const el = document.getElementById('legend');
   el.innerHTML = state.shiftTypes.map(st => {
     const bg = st.id === 'off' ? '#E0E0E0' : st.color;
-    return `
-      <div class="legend-item">
-        <span class="legend-dot" style="background:${bg}"></span>
-        <span>${st.short} ${st.label}</span>
-      </div>`;
+    return `<div class="legend-item">
+      <span class="legend-dot" style="background:${bg}"></span>
+      <span>${st.short} ${st.label}</span>
+    </div>`;
   }).join('');
 
   el.innerHTML += `
     <div class="legend-item">
-      <span style="font-size:11px;color:var(--c-text-3)">—</span>
-      <span>未選択</span>
+      <span style="font-size:11px;color:var(--c-text-3)">—</span><span>未選択</span>
     </div>
     <div class="legend-item">
-      <span style="font-size:11px;color:var(--c-error)">斜線</span>
-      <span>未提出</span>
+      <span style="font-size:11px;color:var(--c-error)">斜線</span><span>未提出</span>
     </div>
   `;
 }
@@ -208,12 +247,7 @@ function renderLegend() {
 function renderTable() {
   const table = document.getElementById('scheduleTable');
   const { dates } = state.dateInfo;
-
-  const staffToShow = state.staff.filter(s => {
-    if (activeFilter === 'submitted')   return state.submissionMap.has(s.id);
-    if (activeFilter === 'unsubmitted') return !state.submissionMap.has(s.id);
-    return true;
-  });
+  const staffToShow = filteredStaff();
 
   let thead = '<thead><tr><th class="col-staff" scope="col">氏名</th>';
   dates.forEach(ds => {
@@ -224,7 +258,6 @@ function renderTable() {
   thead += '</tr></thead>';
 
   let tbody = '<tbody>';
-
   if (staffToShow.length === 0) {
     const msg = state.staff.length === 0
       ? 'まだ提出データがありません。スタッフに案件URLを共有してください。'
@@ -235,25 +268,14 @@ function renderTable() {
       const sub         = state.submissionMap.get(staff.id);
       const isSubmitted = !!sub;
       tbody += `<tr class="${isSubmitted ? '' : 'row-unsubmitted'}">`;
-
       const shortName = staff.name.replace(/　/g, '\n');
       tbody += `<td class="col-staff" title="${staff.name}（${staff.id}）">${shortName.replace('\n', '<br>')}</td>`;
-
       dates.forEach(ds => {
         const dow    = dowOf(ds);
         const colCls = dow === 0 ? 'shift-cell sun-col' : dow === 6 ? 'shift-cell sat-col' : 'shift-cell';
-
-        if (!isSubmitted) {
-          tbody += `<td class="${colCls}"><span class="no-submission">−</span></td>`;
-          return;
-        }
-
+        if (!isSubmitted) { tbody += `<td class="${colCls}"><span class="no-submission">−</span></td>`; return; }
         const shifts = sub.selections[ds] || [];
-        if (shifts.length === 0) {
-          tbody += `<td class="${colCls}"><span class="no-submission">—</span></td>`;
-          return;
-        }
-
+        if (shifts.length === 0) { tbody += `<td class="${colCls}"><span class="no-submission">—</span></td>`; return; }
         const tags = shifts.map(id => {
           const st = shiftById(id);
           if (!st) return '';
@@ -261,15 +283,12 @@ function renderTable() {
           const fg = id === 'off' ? '#757575' : '#fff';
           return `<span class="shift-tag${id === 'off' ? ' off' : ''}" style="background:${bg};color:${fg}" title="${st.label}">${st.short}</span>`;
         }).join('');
-
         tbody += `<td class="${colCls}"><div class="shift-tags">${tags}</div></td>`;
       });
-
       tbody += '</tr>';
     });
   }
   tbody += '</tbody>';
-
   table.innerHTML = thead + tbody;
 }
 
@@ -279,28 +298,18 @@ function buildShiftMatrix() {
   const matrix = {};
   state.shiftTypes.forEach(st => { matrix[st.id] = {}; });
 
-  const staffToInclude = state.staff.filter(s => {
-    if (activeFilter === 'submitted')   return state.submissionMap.has(s.id);
-    if (activeFilter === 'unsubmitted') return !state.submissionMap.has(s.id);
-    return true;
-  });
-
-  staffToInclude.forEach(staff => {
+  filteredStaff().forEach(staff => {
     const sub = state.submissionMap.get(staff.id);
     if (!sub) return;
     const surname = staff.name.split(/[\s　]/)[0];
     state.dateInfo.dates.forEach(ds => {
-      const shifts = sub.selections[ds] || [];
-      shifts.forEach(shiftId => {
+      (sub.selections[ds] || []).forEach(shiftId => {
         if (!matrix[shiftId]) return;
         if (!matrix[shiftId][ds]) matrix[shiftId][ds] = [];
-        if (!matrix[shiftId][ds].includes(surname)) {
-          matrix[shiftId][ds].push(surname);
-        }
+        if (!matrix[shiftId][ds].includes(surname)) matrix[shiftId][ds].push(surname);
       });
     });
   });
-
   return matrix;
 }
 
@@ -318,7 +327,6 @@ function renderShiftView() {
   thead += '</tr></thead>';
 
   let tbody = '<tbody>';
-
   if (state.shiftTypes.length === 0) {
     tbody += `<tr><td colspan="${dates.length + 1}" class="table-empty-cell">シフト枠が設定されていません。</td></tr>`;
   } else {
@@ -326,13 +334,11 @@ function renderShiftView() {
       const bg    = st.id === 'off' ? '#E0E0E0' : st.color;
       const fg    = st.id === 'off' ? '#757575' : '#fff';
       const cells = matrix[st.id] || {};
-
       tbody += '<tr>';
       tbody += `<td class="col-staff shift-row-label" style="border-left:3px solid ${bg}">
         <span class="shift-tag" style="background:${bg};color:${fg};width:auto;padding:0 5px;height:20px">${st.short}</span>
         <span class="shift-row-name">${st.label}</span>
       </td>`;
-
       dates.forEach(ds => {
         const dow    = dowOf(ds);
         const colCls = dow === 0 ? 'names-cell sun-col' : dow === 6 ? 'names-cell sat-col' : 'names-cell';
@@ -348,7 +354,6 @@ function renderShiftView() {
     });
   }
   tbody += '</tbody>';
-
   table.innerHTML = thead + tbody;
 }
 
@@ -364,8 +369,8 @@ function renderHeader() {
   document.getElementById('headerProject').textContent = orgName;
   document.getElementById('subHeaderTitle').textContent =
     `${state.projectName}　${state.dateInfo.label} シフト一覧`;
-  const managers = state.managers || [];
-  const total    = state.staff.length;
+  const managers  = state.managers || [];
+  const total     = state.staff.length;
   const submitted = state.staff.filter(s => state.submissionMap.has(s.id)).length;
   const managerStr = managers.length > 0
     ? '担当：' + managers.map(m => m.role ? `${m.name}（${m.role}）` : m.name).join('　') + '　'
@@ -374,7 +379,7 @@ function renderHeader() {
   document.title = `シフト一覧表 | ${orgName}`;
 }
 
-// ── Export ─────────────────────────────────────────────────────────────────────
+// ── テキストエクスポート ──────────────────────────────────────────────────────
 
 function buildExportText() {
   const { label, dates } = state.dateInfo;
@@ -382,40 +387,86 @@ function buildExportText() {
   const separator = '─'.repeat(40) + '\n';
   let text = header + separator;
 
-  const staffToExport = state.staff.filter(s => {
-    if (activeFilter === 'submitted')   return state.submissionMap.has(s.id);
-    if (activeFilter === 'unsubmitted') return !state.submissionMap.has(s.id);
-    return true;
-  });
-
-  staffToExport.forEach(staff => {
+  filteredStaff().forEach(staff => {
     const sub = state.submissionMap.get(staff.id);
     text += `\n【${staff.name}（${staff.id}）】`;
     if (!sub) { text += '　未提出\n'; return; }
-
     const dt = new Date(sub.submittedAt);
     text += `　${dt.getMonth()+1}/${dt.getDate()} 提出\n`;
-
     dates.forEach(ds => {
-      const d0 = new Date(ds + 'T00:00:00');
+      const d0     = new Date(ds + 'T00:00:00');
       const shifts = sub.selections[ds] || [];
       if (shifts.length === 0) return;
       const labels = shifts.map(id => shiftById(id)?.label || id).join('・');
       text += `  ${d0.getMonth()+1}/${d0.getDate()}（${DAY_NAMES[d0.getDay()]}）${labels}\n`;
     });
-
     if (sub.notes) text += `  ※ ${sub.notes}\n`;
   });
-
   return text;
+}
+
+// ── Excelコピー（TSV形式）────────────────────────────────────────────────────
+
+function buildExcelTsv() {
+  const { dates } = state.dateInfo;
+  const colHeaders = dates.map(ds => dateLabelFull(ds));
+
+  if (viewType === 'staff') {
+    // スタッフ別ビュー
+    const staff = filteredStaff();
+    const header = ['氏名', ...colHeaders];
+    const rows   = staff.map(s => {
+      const sub   = state.submissionMap.get(s.id);
+      const cells = [s.name];
+      dates.forEach(ds => {
+        if (!sub) { cells.push('未提出'); return; }
+        const shifts = sub.selections[ds] || [];
+        cells.push(shifts.map(id => shiftById(id)?.short || id).join('/'));
+      });
+      return cells;
+    });
+
+    // フッター行（各日の提出者数）
+    const footer = ['提出者数', ...dates.map(ds => {
+      return staff.filter(s => {
+        const sub = state.submissionMap.get(s.id);
+        return sub && (sub.selections[ds] || []).length > 0;
+      }).length;
+    })];
+
+    return [header, ...rows, [], footer].map(r => r.join('\t')).join('\n');
+
+  } else {
+    // シフト枠別ビュー
+    const matrix = buildShiftMatrix();
+    const header = ['シフト枠', ...colHeaders];
+    const rows   = state.shiftTypes.map(st => {
+      const cells = [st.label];
+      dates.forEach(ds => {
+        const names = (matrix[st.id] || {})[ds] || [];
+        cells.push(names.join(' '));
+      });
+      return cells;
+    });
+    return [header, ...rows].map(r => r.join('\t')).join('\n');
+  }
 }
 
 async function doExport() {
   const text    = buildExportText();
   const SUCCESS = 'シフト一覧をクリップボードにコピーしました';
+  await copyToClipboard(text, SUCCESS);
+}
 
+async function doExcelCopy() {
+  const tsv     = buildExcelTsv();
+  const SUCCESS = 'Excel用にコピーしました。Excelに貼り付けてください（Ctrl+V）';
+  await copyToClipboard(tsv, SUCCESS);
+}
+
+async function copyToClipboard(text, successMsg) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    try { await navigator.clipboard.writeText(text); showToast(SUCCESS); return; }
+    try { await navigator.clipboard.writeText(text); showToast(successMsg); return; }
     catch {}
   }
   const ta = document.createElement('textarea');
@@ -424,7 +475,7 @@ async function doExport() {
   document.body.appendChild(ta); ta.focus(); ta.select();
   try {
     document.execCommand('copy');
-    showToast(SUCCESS);
+    showToast(successMsg);
   } catch { showToast('コピーに失敗しました'); }
   finally { document.body.removeChild(ta); }
 }
@@ -465,6 +516,7 @@ function bindEvents() {
   });
 
   document.getElementById('exportBtn').addEventListener('click', doExport);
+  document.getElementById('excelBtn').addEventListener('click', doExcelCopy);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -475,10 +527,10 @@ async function init() {
   cachedOrgName   = settings.orgName || '';
 
   const lastId = localStorage.getItem('shiftSystem_lastDashboardProject');
-  const exists = allRealProjects.find(p => p.id === lastId);
-  if (exists)                          await switchProject(lastId);
-  else if (allRealProjects.length > 0) await switchProject(allRealProjects[0].id);
-  else                                  await switchProject(null);
+  const exists  = allRealProjects.find(p => p.id === lastId);
+  if (exists)                          switchProject(lastId);
+  else if (allRealProjects.length > 0) switchProject(allRealProjects[0].id);
+  else                                  switchProject(null);
 
   bindEvents();
 }
@@ -487,13 +539,14 @@ async function init() {
 
 window.addEventListener('pageshow', async e => {
   if (!e.persisted) return;
+  if (unsubscribeSubmissions) { unsubscribeSubmissions(); unsubscribeSubmissions = null; }
   const [projects, settings] = await Promise.all([dbLoadProjects(), dbLoadSettings()]);
   allRealProjects = projects;
   cachedOrgName   = settings.orgName || '';
   const exists = allRealProjects.find(p => p.id === activeProjectId);
-  if (exists)                          await switchProject(activeProjectId);
-  else if (allRealProjects.length > 0) await switchProject(allRealProjects[0].id);
-  else                                  await switchProject(null);
+  if (exists)                          switchProject(activeProjectId);
+  else if (allRealProjects.length > 0) switchProject(allRealProjects[0].id);
+  else                                  switchProject(null);
 });
 
 init();

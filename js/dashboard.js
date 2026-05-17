@@ -1,8 +1,8 @@
-// dashboard.js — 管理者ダッシュボード（Firestore バックエンド）
+// dashboard.js — 管理者ダッシュボード（Firestore リアルタイム対応）
 
 import { MOCK_DASHBOARD } from './mockDashboard.js';
 import {
-  dbLoadProjects, dbLoadSettings, dbSaveSettings, dbLoadProjectSubmissions,
+  dbLoadProjects, dbLoadSettings, dbSaveSettings, dbSubscribeSubmissions,
 } from './db.js';
 
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
@@ -10,9 +10,10 @@ const d = MOCK_DASHBOARD;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let activeProjectId = null;
-let allRealProjects = [];
-let cachedOrgName   = '';
+let activeProjectId      = null;
+let allRealProjects      = [];
+let cachedOrgName        = '';
+let unsubscribeSubmissions = null;   // Firestore リアルタイムリスナー
 
 let state = {
   staff: [],
@@ -80,9 +81,51 @@ function buildDateInfo(proj) {
   return { label: `${year}年${month}月`, year, month, daysInMonth, dates };
 }
 
+// ── 提出データを state に反映 ─────────────────────────────────────────────────
+
+function applySubmissions(registeredStaff, ym, snap) {
+  const allSubs = [];
+  snap.forEach(d => allSubs.push({ key: d.id, ...d.data() }));
+
+  if (registeredStaff.length > 0) {
+    const subMap = new Map();
+    registeredStaff.forEach(s => {
+      const key = `${ym}_${s.id}`;
+      const sub = allSubs.find(r => r.key === key);
+      if (sub && sub.submitted && sub.selections) {
+        subMap.set(s.id, {
+          staffId:     s.id,
+          submittedAt: sub.submittedAt || new Date().toISOString(),
+          notes:       sub.notes || '',
+          selections:  sub.selections,
+        });
+      }
+    });
+    state.staff        = registeredStaff;
+    state.submissionMap = subMap;
+  } else {
+    const sub = allSubs.find(r => r.key === ym);
+    if (sub && sub.submitted && sub.selections) {
+      state.staff        = [{ id: 'LOCAL', name: 'このデバイス' }];
+      state.submissionMap = new Map([['LOCAL', {
+        staffId:     'LOCAL',
+        submittedAt: sub.submittedAt || new Date().toISOString(),
+        notes:       sub.notes || '',
+        selections:  sub.selections,
+      }]]);
+    } else {
+      state.staff        = [];
+      state.submissionMap = new Map();
+    }
+  }
+}
+
 // ── Switch project ────────────────────────────────────────────────────────────
 
-async function switchProject(id) {
+function switchProject(id) {
+  // 前のリスナーを破棄
+  if (unsubscribeSubmissions) { unsubscribeSubmissions(); unsubscribeSubmissions = null; }
+
   activeProjectId = id;
   searchQuery = '';
   localStorage.setItem('shiftSystem_lastDashboardProject', id || '');
@@ -90,7 +133,7 @@ async function switchProject(id) {
   if (searchEl) searchEl.value = '';
 
   if (!id) {
-    // デモモード — モックデータのみ使用
+    // デモモード
     const { year, month } = d.targetMonth;
     const daysInMonth = new Date(year, month, 0).getDate();
     const dates = [];
@@ -106,69 +149,56 @@ async function switchProject(id) {
       projectName: d.project.name,
       managers: [],
     };
-  } else {
-    const proj = allRealProjects.find(p => p.id === id);
-    if (!proj) return;
-
-    const dateInfo = buildDateInfo(proj);
-    const ym = `${dateInfo.year}${String(dateInfo.month).padStart(2, '0')}`;
-    const registeredStaff = proj.staff || [];
-
-    // Firestoreから提出データを取得
-    const allSubs = await dbLoadProjectSubmissions(id);
-    const submissions = [];
-
-    if (registeredStaff.length > 0) {
-      registeredStaff.forEach(s => {
-        const key = `${ym}_${s.id}`;
-        const sub = allSubs.find(r => r.key === key);
-        if (sub && sub.submitted && sub.selections) {
-          submissions.push({
-            staffId: s.id,
-            submittedAt: sub.submittedAt || new Date().toISOString(),
-            notes: sub.notes || '',
-            selections: sub.selections,
-          });
-        }
-      });
-      state = {
-        staff: registeredStaff,
-        submissionMap: new Map(submissions.map(s => [s.staffId, s])),
-        shiftTypes: proj.shiftTypes || [],
-        dateInfo,
-        deadline: new Date(proj.deadline),
-        projectName: proj.name,
-        managers: proj.managers || [],
-      };
-    } else {
-      // スタッフ未登録 — 匿名提出
-      const key = ym;
-      const sub = allSubs.find(r => r.key === key);
-      if (sub && sub.submitted && sub.selections) {
-        submissions.push({
-          staffId: 'LOCAL',
-          submittedAt: sub.submittedAt || new Date().toISOString(),
-          notes: sub.notes || '',
-          selections: sub.selections,
-        });
-      }
-      state = {
-        staff: submissions.map(s => ({ id: s.staffId, name: 'このデバイス' })),
-        submissionMap: new Map(submissions.map(s => [s.staffId, s])),
-        shiftTypes: proj.shiftTypes || [],
-        dateInfo,
-        deadline: new Date(proj.deadline),
-        projectName: proj.name,
-        managers: proj.managers || [],
-      };
-    }
+    renderProjectSwitcher();
+    renderHeader();
+    renderStats();
+    renderDeadline();
+    renderStaffList();
+    return;
   }
+
+  const proj = allRealProjects.find(p => p.id === id);
+  if (!proj) return;
+
+  const dateInfo        = buildDateInfo(proj);
+  const ym              = `${dateInfo.year}${String(dateInfo.month).padStart(2, '0')}`;
+  const registeredStaff = proj.staff || [];
+
+  // 初期表示（提出データは空）
+  state = {
+    staff: registeredStaff,
+    submissionMap: new Map(),
+    shiftTypes: proj.shiftTypes || [],
+    dateInfo,
+    deadline: new Date(proj.deadline),
+    projectName: proj.name,
+    managers: proj.managers || [],
+  };
 
   renderProjectSwitcher();
   renderHeader();
   renderStats();
   renderDeadline();
   renderStaffList();
+
+  // リアルタイムリスナー登録（初回も含め提出データが来るたびに更新）
+  unsubscribeSubmissions = dbSubscribeSubmissions(id, snap => {
+    applySubmissions(registeredStaff, ym, snap);
+    renderStats();
+    renderHeader();
+    renderStaffList();
+    showRealtimeBadge();
+  });
+}
+
+// ── リアルタイム更新バッジ（一時的に表示） ───────────────────────────────────
+
+function showRealtimeBadge() {
+  let badge = document.getElementById('realtimeBadge');
+  if (!badge) return;
+  badge.classList.add('visible');
+  clearTimeout(badge._timer);
+  badge._timer = setTimeout(() => badge.classList.remove('visible'), 2000);
 }
 
 // ── Project switcher ──────────────────────────────────────────────────────────
@@ -212,8 +242,8 @@ function deadlineStatus() {
   const dl = state.deadline;
   const diffMs   = dl - now;
   const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMs < 0)    return { cls: 'passed',   text: `提出期限 ${dl.getMonth()+1}/${dl.getDate()} ${String(dl.getHours()).padStart(2,'0')}:${String(dl.getMinutes()).padStart(2,'0')} — 締切済み` };
-  if (diffDays === 0) return { cls: 'today',   text: `本日締切 — ${String(dl.getHours()).padStart(2,'0')}:${String(dl.getMinutes()).padStart(2,'0')}まで` };
+  if (diffMs < 0)     return { cls: 'passed',   text: `提出期限 ${dl.getMonth()+1}/${dl.getDate()} ${String(dl.getHours()).padStart(2,'0')}:${String(dl.getMinutes()).padStart(2,'0')} — 締切済み` };
+  if (diffDays === 0) return { cls: 'today',    text: `本日締切 — ${String(dl.getHours()).padStart(2,'0')}:${String(dl.getMinutes()).padStart(2,'0')}まで` };
   return { cls: 'upcoming', text: `提出期限まであと ${diffDays} 日（${dl.getMonth()+1}/${dl.getDate()} ${String(dl.getHours()).padStart(2,'0')}:${String(dl.getMinutes()).padStart(2,'0')}）` };
 }
 
@@ -332,11 +362,11 @@ function openDetail(staffId) {
 
     let rows = '';
     dates.forEach(dateStr => {
-      const d0     = new Date(dateStr + 'T00:00:00');
-      const m      = d0.getMonth() + 1;
-      const day    = d0.getDate();
-      const dow    = d0.getDay();
-      const dowName = DAY_NAMES[dow];
+      const d0      = new Date(dateStr + 'T00:00:00');
+      const m       = d0.getMonth() + 1;
+      const day     = d0.getDate();
+      const dow     = d0.getDay();
+      const dowName  = DAY_NAMES[dow];
       const dowClass = dow === 0 ? 'style="color:var(--c-sun)"' : dow === 6 ? 'style="color:#283593"' : '';
       const shifts   = sub.selections[dateStr] || [];
 
@@ -439,10 +469,10 @@ async function init() {
   cachedOrgName   = settings.orgName || '';
 
   const lastId = localStorage.getItem('shiftSystem_lastDashboardProject');
-  const exists = allRealProjects.find(p => p.id === lastId);
-  if (exists)                        await switchProject(lastId);
-  else if (allRealProjects.length > 0) await switchProject(allRealProjects[0].id);
-  else                                  await switchProject(null);
+  const exists  = allRealProjects.find(p => p.id === lastId);
+  if (exists)                          switchProject(lastId);
+  else if (allRealProjects.length > 0) switchProject(allRealProjects[0].id);
+  else                                  switchProject(null);
 
   bindEvents();
 }
@@ -451,13 +481,14 @@ async function init() {
 
 window.addEventListener('pageshow', async e => {
   if (!e.persisted) return;
+  if (unsubscribeSubmissions) { unsubscribeSubmissions(); unsubscribeSubmissions = null; }
   const [projects, settings] = await Promise.all([dbLoadProjects(), dbLoadSettings()]);
   allRealProjects = projects;
   cachedOrgName   = settings.orgName || '';
   const exists = allRealProjects.find(p => p.id === activeProjectId);
-  if (exists)                          await switchProject(activeProjectId);
-  else if (allRealProjects.length > 0) await switchProject(allRealProjects[0].id);
-  else                                  await switchProject(null);
+  if (exists)                          switchProject(activeProjectId);
+  else if (allRealProjects.length > 0) switchProject(allRealProjects[0].id);
+  else                                  switchProject(null);
 });
 
 init();
