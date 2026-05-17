@@ -49,6 +49,7 @@ let editingId = null; // null = new project
 let editorShiftTypes = []; // working copy of shift types in editor
 let editorStaff = [];      // working copy of staff list in editor
 let editorManagers = [];   // working copy of managers in editor
+let dragSrcIdx = null;     // D&D: drag source index
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -306,7 +307,45 @@ function renderShiftEditor() {
     const row = document.createElement('div');
     row.className = 'shift-editor-row';
 
-    // Color swatch button → opens preset palette popup
+    // ── Drag handle ──────────────────────────────────────────────────────────
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.textContent = '⠿';
+    handle.title = 'ドラッグして並べ替え';
+
+    // ハンドルを掴んだときだけ行をドラッグ可能にする
+    handle.addEventListener('mousedown', () => { row.draggable = true; });
+    handle.addEventListener('mouseup',   () => { row.draggable = false; });
+
+    row.addEventListener('dragstart', e => {
+      dragSrcIdx = idx;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => row.classList.add('dragging'), 0);
+    });
+    row.addEventListener('dragend', () => {
+      row.draggable = false;
+      row.classList.remove('dragging');
+      container.querySelectorAll('.drag-over').forEach(r => r.classList.remove('drag-over'));
+    });
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      container.querySelectorAll('.drag-over').forEach(r => r.classList.remove('drag-over'));
+      if (idx !== dragSrcIdx) row.classList.add('drag-over');
+    });
+    row.addEventListener('dragleave', () => {
+      row.classList.remove('drag-over');
+    });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (dragSrcIdx === null || dragSrcIdx === idx) return;
+      const [moved] = editorShiftTypes.splice(dragSrcIdx, 1);
+      editorShiftTypes.splice(idx, 0, moved);
+      dragSrcIdx = null;
+      renderShiftEditor();
+    });
+
+    // ── Color swatch button ───────────────────────────────────────────────────
     const colorInput = document.createElement('button');
     colorInput.type = 'button';
     colorInput.className = 'shift-color-swatch';
@@ -320,7 +359,7 @@ function renderShiftEditor() {
       });
     });
 
-    // Label input — long text supported
+    // ── Label input ───────────────────────────────────────────────────────────
     const labelInput = document.createElement('input');
     labelInput.type  = 'text';
     labelInput.value = st.label;
@@ -329,7 +368,7 @@ function renderShiftEditor() {
     labelInput.maxLength = 60;
     labelInput.addEventListener('input', e => { editorShiftTypes[idx].label = e.target.value; });
 
-    // Short input
+    // ── Short input ───────────────────────────────────────────────────────────
     const shortInput = document.createElement('input');
     shortInput.type  = 'text';
     shortInput.value = st.short;
@@ -339,7 +378,7 @@ function renderShiftEditor() {
     shortInput.style.textAlign = 'center';
     shortInput.addEventListener('input', e => { editorShiftTypes[idx].short = e.target.value; });
 
-    // Time input — optional
+    // ── Time input ────────────────────────────────────────────────────────────
     const timeInput = document.createElement('input');
     timeInput.type  = 'text';
     timeInput.value = st.time || '';
@@ -348,7 +387,7 @@ function renderShiftEditor() {
     timeInput.maxLength = 30;
     timeInput.addEventListener('input', e => { editorShiftTypes[idx].time = e.target.value; });
 
-    // Delete button
+    // ── Delete button ─────────────────────────────────────────────────────────
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'shift-row-delete';
@@ -359,6 +398,7 @@ function renderShiftEditor() {
       renderShiftEditor();
     });
 
+    row.appendChild(handle);
     row.appendChild(colorInput);
     row.appendChild(labelInput);
     row.appendChild(shortInput);

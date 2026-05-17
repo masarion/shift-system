@@ -1094,7 +1094,7 @@
 /* Shift editor header row */
 .shift-editor-header-row {
   display: grid;
-  grid-template-columns: 32px 2fr 40px 1.5fr 36px;
+  grid-template-columns: 20px 32px 2fr 40px 1.5fr 36px;
   gap: 6px;
   padding: 6px 16px;
   font-size: 10px;
@@ -1112,14 +1112,42 @@
 
 .shift-editor-row {
   display: grid;
-  grid-template-columns: 32px 2fr 40px 1.5fr 36px;
+  grid-template-columns: 20px 32px 2fr 40px 1.5fr 36px;
   align-items: center;
   gap: 6px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--c-border);
+  transition: background 0.1s;
 }
 
 .shift-editor-row:last-child { border-bottom: none; }
+
+/* D&D ビジュアル */
+.shift-editor-row.dragging {
+  opacity: 0.35;
+}
+
+.shift-editor-row.drag-over {
+  border-top: 2px solid var(--c-primary);
+  background: #EEF2FF;
+}
+
+/* ドラッグハンドル */
+.drag-handle {
+  cursor: grab;
+  color: var(--c-text-3);
+  font-size: 15px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  transition: color var(--ease);
+  line-height: 1;
+}
+
+.drag-handle:hover { color: var(--c-text-2); }
+.drag-handle:active { cursor: grabbing; }
 
 .shift-color-swatch {
   width: 28px;
