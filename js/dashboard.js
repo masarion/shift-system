@@ -1,14 +1,18 @@
-// dashboard.js — manager dashboard page logic
+// dashboard.js — 管理者ダッシュボード（Firestore バックエンド）
 
 import { MOCK_DASHBOARD } from './mockDashboard.js';
+import {
+  dbLoadProjects, dbLoadSettings, dbSaveSettings, dbLoadProjectSubmissions,
+} from './db.js';
 
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 const d = MOCK_DASHBOARD;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let activeProjectId = null; // null = demo
+let activeProjectId = null;
 let allRealProjects = [];
+let cachedOrgName   = '';
 
 let state = {
   staff: [],
@@ -20,36 +24,13 @@ let state = {
   managers: [],
 };
 
-// ── Storage ───────────────────────────────────────────────────────────────────
-
-function loadAllProjects() {
-  try { return JSON.parse(localStorage.getItem('shiftSystem_projects') || '[]'); }
-  catch { return []; }
-}
-
 // ── Settings ──────────────────────────────────────────────────────────────────
 
-const SETTINGS_KEY = 'shiftSystem_settings';
-
-function loadSettings() {
-  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); }
-  catch { return {}; }
-}
-
-function saveSettingsData(settings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-}
-
-function getOrgName() {
-  return loadSettings().orgName || '';
-}
-
-function openSettings() {
-  const settings = loadSettings();
-  document.getElementById('fldOrgName').value = settings.orgName || '';
+async function openSettings() {
+  const settings = await dbLoadSettings();
+  document.getElementById('fldOrgName').value     = settings.orgName     || '';
   document.getElementById('fldSystemAdmin').value = settings.systemAdmin || '';
-  const overlay = document.getElementById('settingsOverlay');
-  overlay.hidden = false;
+  document.getElementById('settingsOverlay').hidden = false;
   document.body.style.overflow = 'hidden';
 }
 
@@ -58,42 +39,18 @@ function closeSettings() {
   document.body.style.overflow = '';
 }
 
-function saveSettingsHandler() {
+async function saveSettingsHandler() {
   const orgName     = document.getElementById('fldOrgName').value.trim();
   const systemAdmin = document.getElementById('fldSystemAdmin').value.trim();
-  const settings = loadSettings();
-  settings.orgName     = orgName;
-  settings.systemAdmin = systemAdmin;
-  saveSettingsData(settings);
-  renderHeader();
-  closeSettings();
-  showToast('設定を保存しました');
-}
-
-// ── Demo submission merge ─────────────────────────────────────────────────────
-
-function buildDemoSubmissions() {
-  const subs = [...d.submissions];
   try {
-    const raw = localStorage.getItem('shiftSystem_PRJ001_202506');
-    if (!raw) return subs;
-    const saved = JSON.parse(raw);
-    const localStaffId = 'S001';
-    const idx = subs.findIndex(s => s.staffId === localStaffId);
-    if (saved.submitted && saved.selections) {
-      const entry = {
-        staffId: localStaffId,
-        submittedAt: saved.submittedAt || new Date().toISOString(),
-        notes: saved.notes || '',
-        selections: saved.selections,
-        _fromLocal: true,
-      };
-      if (idx >= 0) subs[idx] = entry; else subs.push(entry);
-    } else if (!saved.submitted && idx >= 0) {
-      subs.splice(idx, 1);
-    }
-  } catch {}
-  return subs;
+    await dbSaveSettings({ orgName, systemAdmin });
+    cachedOrgName = orgName;
+    renderHeader();
+    closeSettings();
+    showToast('設定を保存しました');
+  } catch {
+    showToast('設定の保存に失敗しました');
+  }
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -125,7 +82,7 @@ function buildDateInfo(proj) {
 
 // ── Switch project ────────────────────────────────────────────────────────────
 
-function switchProject(id) {
+async function switchProject(id) {
   activeProjectId = id;
   searchQuery = '';
   localStorage.setItem('shiftSystem_lastDashboardProject', id || '');
@@ -133,8 +90,7 @@ function switchProject(id) {
   if (searchEl) searchEl.value = '';
 
   if (!id) {
-    // Demo mode
-    const subs = buildDemoSubmissions();
+    // デモモード — モックデータのみ使用
     const { year, month } = d.targetMonth;
     const daysInMonth = new Date(year, month, 0).getDate();
     const dates = [];
@@ -143,7 +99,7 @@ function switchProject(id) {
     }
     state = {
       staff: d.staff,
-      submissionMap: new Map(subs.map(s => [s.staffId, s])),
+      submissionMap: new Map(d.submissions.map(s => [s.staffId, s])),
       shiftTypes: d.shiftTypes,
       dateInfo: { label: `${year}年${month}月`, year, month, daysInMonth, dates },
       deadline: d.deadline,
@@ -157,26 +113,23 @@ function switchProject(id) {
     const dateInfo = buildDateInfo(proj);
     const ym = `${dateInfo.year}${String(dateInfo.month).padStart(2, '0')}`;
     const registeredStaff = proj.staff || [];
+
+    // Firestoreから提出データを取得
+    const allSubs = await dbLoadProjectSubmissions(id);
     const submissions = [];
 
     if (registeredStaff.length > 0) {
-      // Load per-staff submissions
       registeredStaff.forEach(s => {
-        const lsKey = `shiftSystem_${proj.id}_${ym}_${s.id}`;
-        try {
-          const raw = localStorage.getItem(lsKey);
-          if (raw) {
-            const saved = JSON.parse(raw);
-            if (saved.submitted && saved.selections) {
-              submissions.push({
-                staffId: s.id,
-                submittedAt: saved.submittedAt || new Date().toISOString(),
-                notes: saved.notes || '',
-                selections: saved.selections,
-              });
-            }
-          }
-        } catch {}
+        const key = `${ym}_${s.id}`;
+        const sub = allSubs.find(r => r.key === key);
+        if (sub && sub.submitted && sub.selections) {
+          submissions.push({
+            staffId: s.id,
+            submittedAt: sub.submittedAt || new Date().toISOString(),
+            notes: sub.notes || '',
+            selections: sub.selections,
+          });
+        }
       });
       state = {
         staff: registeredStaff,
@@ -188,23 +141,17 @@ function switchProject(id) {
         managers: proj.managers || [],
       };
     } else {
-      // No registered staff — show device submission if any
-      const lsKey = `shiftSystem_${proj.id}_${ym}`;
-      try {
-        const raw = localStorage.getItem(lsKey);
-        if (raw) {
-          const saved = JSON.parse(raw);
-          if (saved.submitted && saved.selections) {
-            submissions.push({
-              staffId: 'LOCAL',
-              submittedAt: saved.submittedAt || new Date().toISOString(),
-              notes: saved.notes || '',
-              selections: saved.selections,
-              _fromLocal: true,
-            });
-          }
-        }
-      } catch {}
+      // スタッフ未登録 — 匿名提出
+      const key = ym;
+      const sub = allSubs.find(r => r.key === key);
+      if (sub && sub.submitted && sub.selections) {
+        submissions.push({
+          staffId: 'LOCAL',
+          submittedAt: sub.submittedAt || new Date().toISOString(),
+          notes: sub.notes || '',
+          selections: sub.selections,
+        });
+      }
       state = {
         staff: submissions.map(s => ({ id: s.staffId, name: 'このデバイス' })),
         submissionMap: new Map(submissions.map(s => [s.staffId, s])),
@@ -263,20 +210,20 @@ function countFilledDays(selections) {
 function deadlineStatus() {
   const now = new Date();
   const dl = state.deadline;
-  const diffMs = dl - now;
+  const diffMs   = dl - now;
   const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMs < 0) return { cls: 'passed', text: `提出期限 ${dl.getMonth()+1}/${dl.getDate()} ${String(dl.getHours()).padStart(2,'0')}:${String(dl.getMinutes()).padStart(2,'0')} — 締切済み` };
-  if (diffDays === 0) return { cls: 'today', text: `本日締切 — ${String(dl.getHours()).padStart(2,'0')}:${String(dl.getMinutes()).padStart(2,'0')}まで` };
+  if (diffMs < 0)    return { cls: 'passed',   text: `提出期限 ${dl.getMonth()+1}/${dl.getDate()} ${String(dl.getHours()).padStart(2,'0')}:${String(dl.getMinutes()).padStart(2,'0')} — 締切済み` };
+  if (diffDays === 0) return { cls: 'today',   text: `本日締切 — ${String(dl.getHours()).padStart(2,'0')}:${String(dl.getMinutes()).padStart(2,'0')}まで` };
   return { cls: 'upcoming', text: `提出期限まであと ${diffDays} 日（${dl.getMonth()+1}/${dl.getDate()} ${String(dl.getHours()).padStart(2,'0')}:${String(dl.getMinutes()).padStart(2,'0')}）` };
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
 function renderStats() {
-  const total = state.staff.length;
+  const total     = state.staff.length;
   const submitted = state.staff.filter(s => state.submissionMap.has(s.id)).length;
-  const pending = total - submitted;
-  const pct = total === 0 ? 0 : Math.round(submitted / total * 100);
+  const pending   = total - submitted;
+  const pct       = total === 0 ? 0 : Math.round(submitted / total * 100);
 
   document.getElementById('statsBar').innerHTML = `
     <div class="stat-card">
@@ -304,7 +251,7 @@ function renderDeadline() {
 let searchQuery = '';
 
 function renderStaffList() {
-  const list = document.getElementById('staffList');
+  const list  = document.getElementById('staffList');
   const total = state.staff.length;
   const submitted = state.staff.filter(s => state.submissionMap.has(s.id)).length;
   document.getElementById('sectionCount').textContent = `${submitted} / ${total} 名提出済み`;
@@ -329,10 +276,10 @@ function renderStaffList() {
   const { daysInMonth } = state.dateInfo;
 
   filtered.forEach(staff => {
-    const sub = state.submissionMap.get(staff.id);
+    const sub         = state.submissionMap.get(staff.id);
     const isSubmitted = !!sub;
-    const initial = staff.name.replace(/　/g, '').slice(0, 1);
-    const filled  = isSubmitted ? countFilledDays(sub.selections) : 0;
+    const initial     = staff.name.replace(/　/g, '').slice(0, 1);
+    const filled      = isSubmitted ? countFilledDays(sub.selections) : 0;
 
     const row = document.createElement('div');
     row.className = `staff-row ${isSubmitted ? 'submitted' : 'unsubmitted'}`;
@@ -349,7 +296,6 @@ function renderStaffList() {
         ${staff.code ? staff.code : staff.id}
         ${isSubmitted ? `<br>${formatDateTime(sub.submittedAt)}・${filled}/${daysInMonth}日` : ''}
         ${sub?.notes ? ` 💬` : ''}
-        ${sub?._fromLocal ? `<br><span style="color:#1565C0;font-size:10px">📱実データ</span>` : ''}
       </div>
     `;
 
@@ -363,10 +309,10 @@ function renderStaffList() {
 
 function openDetail(staffId) {
   const staff = state.staff.find(s => s.id === staffId);
-  const sub = state.submissionMap.get(staffId);
+  const sub   = state.submissionMap.get(staffId);
   const overlay = document.getElementById('detailOverlay');
-  const title = document.getElementById('detailTitle');
-  const body = document.getElementById('detailBody');
+  const title   = document.getElementById('detailTitle');
+  const body    = document.getElementById('detailBody');
   const { dates, daysInMonth, label } = state.dateInfo;
 
   title.textContent = staff.name;
@@ -386,20 +332,20 @@ function openDetail(staffId) {
 
     let rows = '';
     dates.forEach(dateStr => {
-      const d0 = new Date(dateStr + 'T00:00:00');
-      const m  = d0.getMonth() + 1;
-      const day = d0.getDate();
-      const dow = d0.getDay();
+      const d0     = new Date(dateStr + 'T00:00:00');
+      const m      = d0.getMonth() + 1;
+      const day    = d0.getDate();
+      const dow    = d0.getDay();
       const dowName = DAY_NAMES[dow];
       const dowClass = dow === 0 ? 'style="color:var(--c-sun)"' : dow === 6 ? 'style="color:#283593"' : '';
-      const shifts = sub.selections[dateStr] || [];
+      const shifts   = sub.selections[dateStr] || [];
 
       const tags = shifts.length === 0
         ? '<span style="color:var(--c-text-3)">—</span>'
         : shifts.map(id => {
             const st = shiftById(id);
             if (!st) return '';
-            const cls = id === 'off' ? 'shift-label-tag off' : 'shift-label-tag';
+            const cls   = id === 'off' ? 'shift-label-tag off' : 'shift-label-tag';
             const style = id !== 'off' ? `style="background:${st.color}"` : '';
             return `<span class="${cls}" ${style}>${st.label}</span>`;
           }).join('');
@@ -440,7 +386,7 @@ function closeDetail() {
 // ── Header ────────────────────────────────────────────────────────────────────
 
 function renderHeader() {
-  const orgName = getOrgName() || 'シフト管理システム';
+  const orgName = cachedOrgName || 'シフト管理システム';
   document.getElementById('headerProject').textContent = orgName;
   document.getElementById('subHeaderTitle').textContent =
     `${state.projectName}　${state.dateInfo.label} 希望シフト管理`;
@@ -473,9 +419,9 @@ function bindEvents() {
     if (e.target === e.currentTarget) closeDetail();
   });
 
-  document.getElementById('settingsBtn').addEventListener('click', openSettings);
+  document.getElementById('settingsBtn').addEventListener('click', () => openSettings());
   document.getElementById('settingsClose').addEventListener('click', closeSettings);
-  document.getElementById('settingsSave').addEventListener('click', saveSettingsHandler);
+  document.getElementById('settingsSave').addEventListener('click', () => saveSettingsHandler());
   document.getElementById('settingsOverlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeSettings();
   });
@@ -487,29 +433,31 @@ function bindEvents() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-allRealProjects = loadAllProjects();
+async function init() {
+  const [projects, settings] = await Promise.all([dbLoadProjects(), dbLoadSettings()]);
+  allRealProjects = projects;
+  cachedOrgName   = settings.orgName || '';
 
-// Restore last selected project, or default to first real project
-(function () {
   const lastId = localStorage.getItem('shiftSystem_lastDashboardProject');
   const exists = allRealProjects.find(p => p.id === lastId);
-  if (exists) {
-    switchProject(lastId);
-  } else if (allRealProjects.length > 0) {
-    switchProject(allRealProjects[0].id);
-  } else {
-    switchProject(null);
-  }
-})();
+  if (exists)                        await switchProject(lastId);
+  else if (allRealProjects.length > 0) await switchProject(allRealProjects[0].id);
+  else                                  await switchProject(null);
 
-bindEvents();
+  bindEvents();
+}
 
-// ── BFキャッシュ対策（戻るボタンで復元された時に再初期化）────────────────────
-window.addEventListener('pageshow', e => {
-  if (!e.persisted) return; // 通常ロードは無視
-  allRealProjects = loadAllProjects();
+// ── BFキャッシュ対策 ──────────────────────────────────────────────────────────
+
+window.addEventListener('pageshow', async e => {
+  if (!e.persisted) return;
+  const [projects, settings] = await Promise.all([dbLoadProjects(), dbLoadSettings()]);
+  allRealProjects = projects;
+  cachedOrgName   = settings.orgName || '';
   const exists = allRealProjects.find(p => p.id === activeProjectId);
-  if (exists) switchProject(activeProjectId);
-  else if (allRealProjects.length > 0) switchProject(allRealProjects[0].id);
-  else switchProject(null);
+  if (exists)                          await switchProject(activeProjectId);
+  else if (allRealProjects.length > 0) await switchProject(allRealProjects[0].id);
+  else                                  await switchProject(null);
 });
+
+init();

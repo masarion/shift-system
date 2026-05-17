@@ -35,19 +35,6 @@
     <span class="nav-card-label">管理者ダッシュボード</span>
     <span class="nav-card-desc">管理者向け — 提出状況とシフト一覧を確認します</span>
   </a>
-  <script>
-    try {
-      const s = JSON.parse(localStorage.getItem('shiftSystem_settings') || '{}');
-      if (s.orgName) {
-        document.getElementById('topTitle').innerHTML =
-          s.orgName + '<br><span style="font-size:14px;font-weight:400;color:#616161">シフト管理システム</span>';
-      }
-      if (s.systemAdmin) {
-        const el = document.getElementById('topAdmin');
-        el.textContent = '統括責任者：' + s.systemAdmin;
-        el.style.display = '';
-      }
-    } catch {}
-  </script>
+  <script type="module" src="js/index-loader.js"></script>
 </body>
 </html>

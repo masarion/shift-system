@@ -1,84 +1,98 @@
-// calendar.js — main application logic
+// calendar.js — スタッフ向けシフト提出ページ（Firestore バックエンド）
 
 import { MOCK_DATA } from './mockData.js';
 import {
   formatDate, formatDateJP, formatDateTimeJP,
   getDaysInMonth, getHolidayName, parseDateStr,
 } from './utils.js';
-import { StorageManager } from './storage.js';
 import { ModalController } from './modal.js';
+import {
+  dbLoadProject, dbLoadSubmission, dbSaveSubmission, dbClearSubmission,
+} from './db.js';
 
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 const modal = new ModalController();
 
-// ── Project config: read ?pid= from URL, fall back to mock data ──────────────
-
-function resolveProject() {
-  const pid = new URLSearchParams(location.search).get('pid');
-  if (!pid) return { data: MOCK_DATA, storageKey: 'shiftSystem_PRJ001_202506' };
-  try {
-    const projects = JSON.parse(localStorage.getItem('shiftSystem_projects') || '[]');
-    const proj = projects.find(p => p.id === pid);
-    if (proj) {
-      let targetPeriod = null;
-      let targetMonth  = null;
-      let ym;
-      if (proj.startDate && proj.endDate) {
-        targetPeriod = { startDate: proj.startDate, endDate: proj.endDate };
-        const d0 = new Date(proj.startDate + 'T00:00:00');
-        ym = `${d0.getFullYear()}${String(d0.getMonth() + 1).padStart(2, '0')}`;
-      } else if (proj.targetMonth) {
-        targetMonth = { year: proj.targetMonth.year, month: proj.targetMonth.month };
-        ym = `${proj.targetMonth.year}${String(proj.targetMonth.month).padStart(2, '0')}`;
-      } else {
-        // fallback: next month
-        const next = new Date(); next.setMonth(next.getMonth() + 1); next.setDate(1);
-        targetMonth = { year: next.getFullYear(), month: next.getMonth() + 1 };
-        ym = `${targetMonth.year}${String(targetMonth.month).padStart(2, '0')}`;
-      }
-      return {
-        data: {
-          ...MOCK_DATA,
-          project:        { id: proj.id, name: proj.name },
-          ...(targetPeriod ? { targetPeriod } : { targetPeriod: null }),
-          ...(targetMonth  ? { targetMonth  } : {}),
-          deadline:       new Date(proj.deadline),
-          shiftTypes:     proj.shiftTypes,
-          staffList:      proj.staff || [],
-          infoMessage:    proj.infoMessage  ?? MOCK_DATA.infoMessage,
-          confirmMessage: proj.confirmMessage ?? MOCK_DATA.confirmMessage,
-        },
-        storageKey: `shiftSystem_${pid}_${ym}`,
-      };
-    }
-  } catch { /* ignore */ }
-  return { data: MOCK_DATA, storageKey: 'shiftSystem_PRJ001_202506' };
-}
-
-const { data: RESOLVED_DATA, storageKey: BASE_STORAGE_KEY } = resolveProject();
-
 class CalendarApp {
   constructor() {
-    this.data = RESOLVED_DATA;
-    this.storageKey = BASE_STORAGE_KEY;
-    this.selections = {};      // { 'YYYY-MM-DD': string[] }
-    this.notes = '';
-    this.submitted = false;
-    this.submittedAt = null;
-    this.selectedDate = null;  // currently editing date
-    this.tempSelections = [];  // scratch pad for shift modal
+    this.data          = MOCK_DATA;  // _resolveProject() で上書き
+    this.projectId     = null;       // Firestore のプロジェクト ID
+    this.submissionKey = null;       // submissions サブコレクションのドキュメントキー
+    this.baseYm        = null;       // ym 部分（スタッフ ID を付ける前）
+    this.selections    = {};
+    this.notes         = '';
+    this.submitted     = false;
+    this.submittedAt   = null;
+    this.selectedDate  = null;
+    this.tempSelections = [];
 
     this._init();
   }
 
   async _init() {
+    await this._resolveProject();
+
     if (this.data.staffList && this.data.staffList.length > 0) {
       await this._showStaffPicker();
     }
-    this._load();
+    await this._load();
     this._render();
     this._bindEvents();
   }
+
+  // ─── プロジェクト解決 ────────────────────────────────────────────────────────
+
+  async _resolveProject() {
+    const pid = new URLSearchParams(location.search).get('pid');
+    if (!pid) {
+      // デモモード — MOCK_DATA をそのまま使用
+      this.data = MOCK_DATA;
+      return;
+    }
+
+    const proj = await dbLoadProject(pid);
+    if (!proj) {
+      // 案件が見つからない場合はデモにフォールバック
+      this.data = MOCK_DATA;
+      return;
+    }
+
+    this.projectId = pid;
+
+    let targetPeriod = null;
+    let targetMonth  = null;
+    let ym;
+
+    if (proj.startDate && proj.endDate) {
+      targetPeriod = { startDate: proj.startDate, endDate: proj.endDate };
+      const d0 = new Date(proj.startDate + 'T00:00:00');
+      ym = `${d0.getFullYear()}${String(d0.getMonth() + 1).padStart(2, '0')}`;
+    } else if (proj.targetMonth) {
+      targetMonth = { year: proj.targetMonth.year, month: proj.targetMonth.month };
+      ym = `${proj.targetMonth.year}${String(proj.targetMonth.month).padStart(2, '0')}`;
+    } else {
+      const next = new Date(); next.setMonth(next.getMonth() + 1); next.setDate(1);
+      targetMonth = { year: next.getFullYear(), month: next.getMonth() + 1 };
+      ym = `${targetMonth.year}${String(targetMonth.month).padStart(2, '0')}`;
+    }
+
+    this.baseYm        = ym;
+    this.submissionKey = ym;  // スタッフ登録なしの場合はこのまま
+
+    this.data = {
+      ...MOCK_DATA,
+      project:        { id: proj.id, name: proj.name },
+      targetPeriod:   targetPeriod || null,
+      ...(targetMonth ? { targetMonth } : {}),
+      deadline:       new Date(proj.deadline),
+      shiftTypes:     proj.shiftTypes,
+      staffList:      proj.staff || [],
+      infoMessage:    proj.infoMessage  ?? MOCK_DATA.infoMessage,
+      confirmMessage: proj.confirmMessage ?? MOCK_DATA.confirmMessage,
+    };
+  }
+
+  // ─── スタッフ認証ピッカー ─────────────────────────────────────────────────────
 
   _showStaffPicker() {
     return new Promise(resolve => {
@@ -101,29 +115,25 @@ class CalendarApp {
       overlay.appendChild(sheet);
       document.body.appendChild(overlay);
 
-      const input = overlay.querySelector('#staffCodeInput');
-      const error = overlay.querySelector('#staffPickerError');
+      const input      = overlay.querySelector('#staffCodeInput');
+      const error      = overlay.querySelector('#staffPickerError');
       const confirmBtn = overlay.querySelector('#staffPickerConfirm');
 
       const tryConfirm = () => {
-        const code = input.value.trim();
+        const code  = input.value.trim();
         const found = this.data.staffList.find(
           s => (s.code || s.id).toLowerCase() === code.toLowerCase()
         );
-        if (!found) {
-          error.hidden = false;
-          input.focus();
-          return;
-        }
-        this.data.staff = { id: found.id, name: found.name, code: found.code };
-        this.storageKey = `${BASE_STORAGE_KEY}_${found.id}`;
+        if (!found) { error.hidden = false; input.focus(); return; }
+        this.data.staff    = { id: found.id, name: found.name, code: found.code };
+        this.submissionKey = `${this.baseYm}_${found.id}`;
         overlay.remove();
         resolve();
       };
 
       confirmBtn.addEventListener('click', tryConfirm);
       input.addEventListener('keydown', e => { if (e.key === 'Enter') tryConfirm(); });
-      input.addEventListener('input', () => { error.hidden = true; });
+      input.addEventListener('input',   () => { error.hidden = true; });
 
       requestAnimationFrame(() => input.focus());
     });
@@ -131,22 +141,24 @@ class CalendarApp {
 
   // ─── Persistence ────────────────────────────────────────────────────────────
 
-  _load() {
-    const saved = StorageManager.load(this.storageKey);
+  async _load() {
+    if (!this.projectId || !this.submissionKey) return;  // デモモード
+    const saved = await dbLoadSubmission(this.projectId, this.submissionKey);
     if (!saved) return;
-    this.selections = saved.selections || {};
-    this.notes = saved.notes || '';
-    this.submitted = saved.submitted || false;
+    this.selections  = saved.selections  || {};
+    this.notes       = saved.notes       || '';
+    this.submitted   = saved.submitted   || false;
     this.submittedAt = saved.submittedAt || null;
   }
 
-  _save() {
-    StorageManager.save({
-      selections: this.selections,
-      notes: this.notes,
-      submitted: this.submitted,
+  async _save() {
+    if (!this.projectId || !this.submissionKey) return;  // デモモード
+    await dbSaveSubmission(this.projectId, this.submissionKey, {
+      selections:  this.selections,
+      notes:       this.notes,
+      submitted:   this.submitted,
       submittedAt: this.submittedAt,
-    }, this.storageKey);
+    });
   }
 
   // ─── Top-level render ────────────────────────────────────────────────────────
@@ -156,40 +168,38 @@ class CalendarApp {
     this._renderCalendar();
     this._renderActionBar();
     document.body.classList.toggle('is-submitted', this.submitted);
-    // Measure actual bar heights after paint and adjust layout
     requestAnimationFrame(() => this._adjustLayout());
   }
 
   _adjustLayout() {
-    const header    = document.querySelector('.app-header');
-    const infobar   = document.querySelector('.info-bar');
-    const msgbar    = document.getElementById('msgBar');
-    const banner    = document.getElementById('submittedBanner');
-    const progress  = document.querySelector('.progress-bar');
-    const wrapper   = document.querySelector('.calendar-wrapper');
+    const header   = document.querySelector('.app-header');
+    const infobar  = document.querySelector('.info-bar');
+    const msgbar   = document.getElementById('msgBar');
+    const banner   = document.getElementById('submittedBanner');
+    const progress = document.querySelector('.progress-bar');
+    const wrapper  = document.querySelector('.calendar-wrapper');
     if (!header || !infobar || !msgbar || !progress || !wrapper) return;
 
-    const hH = header.offsetHeight;    // ~56
-    const hI = infobar.offsetHeight;   // ~48
-    const hM = msgbar.offsetHeight;    // actual, varies with text wrap
-    const hP = progress.offsetHeight;  // ~36
+    const hH = header.offsetHeight;
+    const hI = infobar.offsetHeight;
+    const hM = msgbar.offsetHeight;
+    const hP = progress.offsetHeight;
     const hB = (banner && !banner.hidden) ? banner.offsetHeight : 0;
 
     const topProgress = hH + hI + hM;
 
     if (banner) banner.style.top = `${topProgress}px`;
-    progress.style.top  = `${topProgress + hB}px`;
+    progress.style.top       = `${topProgress + hB}px`;
     wrapper.style.paddingTop = `${topProgress + hB + hP}px`;
   }
 
   _renderHeader() {
-    const { year, month } = this.data.targetMonth;
-
-    // Update static HTML text so project config is reflected
     const projEl = document.querySelector('.header-project');
     if (projEl) projEl.textContent = this.data.project.name;
+
     const staffEl = document.querySelector('.header-staff');
-    if (staffEl) staffEl.textContent = this.data.staff.name;
+    if (staffEl) staffEl.textContent = this.data.staff ? this.data.staff.name : '';
+
     const monthEl = document.querySelector('.info-month');
     if (monthEl) {
       if (this.data.targetPeriod) {
@@ -197,7 +207,7 @@ class CalendarApp {
         const e = new Date(this.data.targetPeriod.endDate   + 'T00:00:00');
         monthEl.textContent =
           `${s.getMonth()+1}月${s.getDate()}日〜${e.getMonth()+1}月${e.getDate()}日 希望シフト提出`;
-      } else {
+      } else if (this.data.targetMonth) {
         const { year, month } = this.data.targetMonth;
         monthEl.textContent = `${year}年${month}月 希望シフト提出`;
       }
@@ -236,7 +246,6 @@ class CalendarApp {
     const grid = document.getElementById('calendarGrid');
     grid.innerHTML = '';
 
-    // ── Day-of-week headers ──
     DAY_NAMES.forEach((name, i) => {
       const h = document.createElement('div');
       h.className = `cal-header${i === 0 ? ' col-sun' : i === 6 ? ' col-sat' : ''}`;
@@ -244,23 +253,20 @@ class CalendarApp {
       grid.appendChild(h);
     });
 
-    // ── Leading empty cells ──
     for (let i = 0; i < firstDow; i++) {
       grid.appendChild(this._emptyCell());
     }
 
-    // ── Day cells ──
     dates.forEach(dateStr => {
       const date = new Date(dateStr + 'T00:00:00');
       const dow  = date.getDay();
-      const holiday = getHolidayName(dateStr, this.data.holidays);
+      const holiday    = getHolidayName(dateStr, this.data.holidays);
       const displayDay = isMultiMonth
         ? `${date.getMonth() + 1}/${date.getDate()}`
         : date.getDate();
       grid.appendChild(this._buildDayCell(displayDay, dow, dateStr, holiday));
     });
 
-    // ── Trailing empty cells ──
     const trailing = (7 - ((firstDow + daysCount) % 7)) % 7;
     for (let i = 0; i < trailing; i++) {
       grid.appendChild(this._emptyCell());
@@ -275,7 +281,6 @@ class CalendarApp {
     return el;
   }
 
-  // Returns { start:Date, end:Date, dates:string[], isMultiMonth:bool }
   _getDateRange() {
     const p = this.data;
     if (p.targetPeriod && p.targetPeriod.startDate && p.targetPeriod.endDate) {
@@ -291,7 +296,6 @@ class CalendarApp {
                            start.getFullYear() !== end.getFullYear();
       return { start, end, dates, isMultiMonth };
     }
-    // Month mode
     const { year, month } = p.targetMonth;
     const start = new Date(year, month - 1, 1);
     const total = getDaysInMonth(year, month);
@@ -303,11 +307,11 @@ class CalendarApp {
   }
 
   _buildDayCell(day, dow, dateStr, holiday) {
-    const shifts = this.selections[dateStr] || [];
-    const isSun = dow === 0;
-    const isSat = dow === 6;
+    const shifts    = this.selections[dateStr] || [];
+    const isSun     = dow === 0;
+    const isSat     = dow === 6;
     const isHoliday = !!holiday;
-    const isRed = isSun || isHoliday;
+    const isRed     = isSun || isHoliday;
 
     const cell = document.createElement('div');
     cell.className = [
@@ -319,13 +323,11 @@ class CalendarApp {
     ].filter(Boolean).join(' ');
     cell.dataset.date = dateStr;
 
-    // Date number
     const numEl = document.createElement('div');
     numEl.className = 'cell-num';
     numEl.textContent = day;
     cell.appendChild(numEl);
 
-    // Holiday name
     if (holiday) {
       const hlEl = document.createElement('div');
       hlEl.className = 'cell-holiday-name';
@@ -333,7 +335,6 @@ class CalendarApp {
       cell.appendChild(hlEl);
     }
 
-    // Shift chips
     if (shifts.length > 0) {
       const chipsEl = document.createElement('div');
       chipsEl.className = 'cell-chips';
@@ -387,7 +388,7 @@ class CalendarApp {
 
   _openShiftModal(dateStr) {
     if (this.submitted) return;
-    this.selectedDate = dateStr;
+    this.selectedDate   = dateStr;
     this.tempSelections = [...(this.selections[dateStr] || [])];
 
     const date = parseDateStr(dateStr);
@@ -397,7 +398,6 @@ class CalendarApp {
     body.innerHTML = '';
     this._cbRefs = [];
 
-    // 2-column grid wrapper
     const grid = document.createElement('div');
     grid.className = 'shift-options-grid';
     body.appendChild(grid);
@@ -407,8 +407,8 @@ class CalendarApp {
       label.className = 'shift-option-row';
 
       const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.value = st.id;
+      cb.type    = 'checkbox';
+      cb.value   = st.id;
       cb.checked = this.tempSelections.includes(st.id);
       cb.addEventListener('change', () => {
         if (cb.checked) {
@@ -431,7 +431,7 @@ class CalendarApp {
       label.appendChild(cb);
       label.appendChild(dot);
       label.appendChild(info);
-      grid.appendChild(label); // append to grid, not body
+      grid.appendChild(label);
     });
 
     modal.open('shiftModal');
@@ -442,14 +442,14 @@ class CalendarApp {
     if (this.tempSelections.length === 0) {
       delete this.selections[this.selectedDate];
     } else {
-      // Preserve mockData ordering
       const ordered = this.data.shiftTypes
         .map(s => s.id)
         .filter(id => this.tempSelections.includes(id));
       this.selections[this.selectedDate] = ordered;
     }
     this.selectedDate = null;
-    this._save();
+    // 中間保存（エラーは無視してUXを妨げない）
+    this._save().catch(e => console.warn('[save] confirmShift:', e));
     modal.close('shiftModal');
     this._renderCalendar();
     this._renderActionBar();
@@ -495,7 +495,6 @@ class CalendarApp {
     this._buildConfirmTable();
     document.getElementById('confirmNotes').value = this.notes;
 
-    // Update confirm-meta with dynamic project/staff info
     const metaEl = document.querySelector('.confirm-meta');
     if (metaEl) {
       let periodStr;
@@ -507,10 +506,10 @@ class CalendarApp {
         const { year, month } = this.data.targetMonth;
         periodStr = `${year}年${month}月`;
       }
-      metaEl.innerHTML = `${this.data.project.name}　${periodStr}<br>${this.data.staff.name}（${this.data.staff.id}）`;
+      const staff = this.data.staff || { name: '', id: '' };
+      metaEl.innerHTML = `${this.data.project.name}　${periodStr}<br>${staff.name}（${staff.id}）`;
     }
 
-    // Render admin message (each array entry becomes one paragraph)
     const adminEl = document.getElementById('adminMsg');
     adminEl.innerHTML = (this.data.confirmMessage || [])
       .map(line => `<p>${line}</p>`)
@@ -525,11 +524,11 @@ class CalendarApp {
     tbody.innerHTML = '';
 
     dates.forEach(ds => {
-      const date = new Date(ds + 'T00:00:00');
-      const dow  = date.getDay();
-      const d    = date.getDate();
+      const date    = new Date(ds + 'T00:00:00');
+      const dow     = date.getDay();
+      const d       = date.getDate();
       const holiday = getHolidayName(ds, this.data.holidays);
-      const shifts = this.selections[ds] || [];
+      const shifts  = this.selections[ds] || [];
 
       const tr = document.createElement('tr');
       const isRed = dow === 0 || !!holiday;
@@ -564,11 +563,12 @@ class CalendarApp {
       const { year, month } = this.data.targetMonth;
       periodStr = `${year}年${month}月`;
     }
+    const staff = this.data.staff || { name: '', id: '' };
     const lines = [
       '【希望シフト提出】',
       `${this.data.project.name}`,
       periodStr,
-      `氏名: ${this.data.staff.name}（${this.data.staff.id}）`,
+      `氏名: ${staff.name}（${staff.id}）`,
       '',
     ];
     dates.forEach(ds => {
@@ -589,21 +589,17 @@ class CalendarApp {
   }
 
   async _copyToClipboard() {
-    const text = this._buildCopyText();
+    const text    = this._buildCopyText();
     const SUCCESS = 'シフト希望内容をコピーしました。ご自身のスマートフォンのメモ帳などに貼り付けて保存してください';
 
-    // Modern Clipboard API (requires HTTPS or localhost)
     if (navigator.clipboard && navigator.clipboard.writeText) {
       try {
         await navigator.clipboard.writeText(text);
         this._showToast(SUCCESS, 5000);
         return;
-      } catch {
-        // fall through to execCommand
-      }
+      } catch {}
     }
 
-    // Fallback: hidden textarea + execCommand (works on HTTP / older browsers)
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none';
@@ -622,20 +618,27 @@ class CalendarApp {
 
   // ─── Submit ──────────────────────────────────────────────────────────────────
 
-  _submit() {
-    this.notes = document.getElementById('confirmNotes').value;
-    this.submitted = true;
+  async _submit() {
+    this.notes       = document.getElementById('confirmNotes').value;
+    this.submitted   = true;
     this.submittedAt = new Date().toISOString();
-    this._save();
+
+    try {
+      await this._save();
+    } catch (e) {
+      console.error('[submit] save failed:', e);
+      this._showToast('送信に失敗しました。もう一度お試しください。');
+      this.submitted   = false;
+      this.submittedAt = null;
+      return;
+    }
 
     modal.closeAll();
 
     const timeEl = document.getElementById('successTime');
     if (timeEl) timeEl.textContent = formatDateTimeJP(new Date(this.submittedAt));
 
-    const screen = document.getElementById('successScreen');
-    screen.classList.add('active');
-
+    document.getElementById('successScreen').classList.add('active');
     this._render();
   }
 
@@ -652,12 +655,10 @@ class CalendarApp {
   // ─── Event binding ───────────────────────────────────────────────────────────
 
   _bindEvents() {
-    // Shift modal
     document.getElementById('shiftModalClose').addEventListener('click', () => modal.close('shiftModal'));
     document.getElementById('shiftModalClear').addEventListener('click', () => this._clearShiftModal());
     document.getElementById('shiftModalConfirm').addEventListener('click', () => this._confirmShift());
 
-    // Confirm modal
     document.getElementById('confirmBtn').addEventListener('click', () => this._openConfirmModal());
     const goBackFromConfirm = () => {
       this.notes = document.getElementById('confirmNotes').value;
@@ -671,32 +672,31 @@ class CalendarApp {
       this.notes = e.target.value;
     });
 
-    // Success screen
     document.getElementById('successClose').addEventListener('click', () => {
       document.getElementById('successScreen').classList.remove('active');
     });
 
-    // Clear all data — confirmation dialog
-    document.getElementById('clearBtn').addEventListener('click', () => {
+    // 入力クリアボタン（確認ダイアログ付き）
+    document.getElementById('clearBtn').addEventListener('click', async () => {
       const ok = window.confirm('「OK」をタップすると入力したシフト希望をすべて削除します。この操作は元に戻せません。');
       if (!ok) return;
-      StorageManager.clear(this.storageKey);
+      if (this.projectId && this.submissionKey) {
+        await dbClearSubmission(this.projectId, this.submissionKey)
+          .catch(e => console.warn('[clear]', e));
+      }
       location.reload();
     });
 
-    // Click outside modal to close
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
       overlay.addEventListener('click', e => {
         if (e.target === overlay) modal.close(overlay.id);
       });
     });
 
-    // Escape key
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') modal.closeAll();
     });
 
-    // Recalculate layout on orientation change / resize
     window.addEventListener('resize', () => this._adjustLayout());
   }
 }

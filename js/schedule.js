@@ -1,6 +1,9 @@
-// schedule.js — monthly shift grid page logic
+// schedule.js — 月次シフト一覧ページ（Firestore バックエンド）
 
 import { MOCK_DASHBOARD } from './mockDashboard.js';
+import {
+  dbLoadProjects, dbLoadSettings, dbLoadProjectSubmissions,
+} from './db.js';
 
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 const d = MOCK_DASHBOARD;
@@ -9,6 +12,7 @@ const d = MOCK_DASHBOARD;
 
 let activeProjectId = null;
 let allRealProjects = [];
+let cachedOrgName   = '';
 
 let state = {
   staff: [],
@@ -20,47 +24,7 @@ let state = {
 };
 
 let activeFilter = 'all';
-let viewType = 'staff'; // 'staff' | 'shift'
-
-// ── Storage ───────────────────────────────────────────────────────────────────
-
-function loadAllProjects() {
-  try { return JSON.parse(localStorage.getItem('shiftSystem_projects') || '[]'); }
-  catch { return []; }
-}
-
-function getOrgName() {
-  try {
-    const s = JSON.parse(localStorage.getItem('shiftSystem_settings') || '{}');
-    return s.orgName || '';
-  } catch { return ''; }
-}
-
-// ── Demo submissions merge ─────────────────────────────────────────────────────
-
-function buildDemoSubmissions() {
-  const subs = [...d.submissions];
-  try {
-    const raw = localStorage.getItem('shiftSystem_PRJ001_202506');
-    if (!raw) return subs;
-    const saved = JSON.parse(raw);
-    const localStaffId = 'S001';
-    const idx = subs.findIndex(s => s.staffId === localStaffId);
-    if (saved.submitted && saved.selections) {
-      const entry = {
-        staffId: localStaffId,
-        submittedAt: saved.submittedAt || new Date().toISOString(),
-        notes: saved.notes || '',
-        selections: saved.selections,
-        _fromLocal: true,
-      };
-      if (idx >= 0) subs[idx] = entry; else subs.push(entry);
-    } else if (!saved.submitted && idx >= 0) {
-      subs.splice(idx, 1);
-    }
-  } catch {}
-  return subs;
-}
+let viewType = 'staff';
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -92,7 +56,7 @@ function buildDateInfo(proj) {
 
 // ── Switch project ─────────────────────────────────────────────────────────────
 
-function switchProject(id) {
+async function switchProject(id) {
   activeProjectId = id;
   activeFilter = 'all';
   localStorage.setItem('shiftSystem_lastDashboardProject', id || '');
@@ -100,7 +64,7 @@ function switchProject(id) {
   document.querySelector('.filter-chip[data-filter="all"]').classList.add('active');
 
   if (!id) {
-    const subs = buildDemoSubmissions();
+    // デモモード — モックデータのみ使用
     const { year, month } = d.targetMonth;
     const daysInMonth = new Date(year, month, 0).getDate();
     const dates = [];
@@ -109,7 +73,7 @@ function switchProject(id) {
     }
     state = {
       staff: d.staff,
-      submissionMap: new Map(subs.map(s => [s.staffId, s])),
+      submissionMap: new Map(d.submissions.map(s => [s.staffId, s])),
       shiftTypes: d.shiftTypes,
       dateInfo: { label: `${year}年${month}月`, year, month, daysInMonth, dates, isMultiMonth: false },
       projectName: d.project.name,
@@ -122,25 +86,23 @@ function switchProject(id) {
     const dateInfo = buildDateInfo(proj);
     const ym = `${dateInfo.year}${String(dateInfo.month).padStart(2, '0')}`;
     const registeredStaff = proj.staff || [];
+
+    // Firestoreから提出データを取得
+    const allSubs = await dbLoadProjectSubmissions(id);
     const submissions = [];
 
     if (registeredStaff.length > 0) {
       registeredStaff.forEach(s => {
-        const lsKey = `shiftSystem_${proj.id}_${ym}_${s.id}`;
-        try {
-          const raw = localStorage.getItem(lsKey);
-          if (raw) {
-            const saved = JSON.parse(raw);
-            if (saved.submitted && saved.selections) {
-              submissions.push({
-                staffId: s.id,
-                submittedAt: saved.submittedAt || new Date().toISOString(),
-                notes: saved.notes || '',
-                selections: saved.selections,
-              });
-            }
-          }
-        } catch {}
+        const key = `${ym}_${s.id}`;
+        const sub = allSubs.find(r => r.key === key);
+        if (sub && sub.submitted && sub.selections) {
+          submissions.push({
+            staffId: s.id,
+            submittedAt: sub.submittedAt || new Date().toISOString(),
+            notes: sub.notes || '',
+            selections: sub.selections,
+          });
+        }
       });
       state = {
         staff: registeredStaff,
@@ -151,21 +113,16 @@ function switchProject(id) {
         managers: proj.managers || [],
       };
     } else {
-      const lsKey = `shiftSystem_${proj.id}_${ym}`;
-      try {
-        const raw = localStorage.getItem(lsKey);
-        if (raw) {
-          const saved = JSON.parse(raw);
-          if (saved.submitted && saved.selections) {
-            submissions.push({
-              staffId: 'LOCAL',
-              submittedAt: saved.submittedAt || new Date().toISOString(),
-              notes: saved.notes || '',
-              selections: saved.selections,
-            });
-          }
-        }
-      } catch {}
+      const key = ym;
+      const sub = allSubs.find(r => r.key === key);
+      if (sub && sub.submitted && sub.selections) {
+        submissions.push({
+          staffId: 'LOCAL',
+          submittedAt: sub.submittedAt || new Date().toISOString(),
+          notes: sub.notes || '',
+          selections: sub.selections,
+        });
+      }
       state = {
         staff: submissions.map(s => ({ id: s.staffId, name: 'このデバイス' })),
         submissionMap: new Map(submissions.map(s => [s.staffId, s])),
@@ -258,7 +215,6 @@ function renderTable() {
     return true;
   });
 
-  // thead
   let thead = '<thead><tr><th class="col-staff" scope="col">氏名</th>';
   dates.forEach(ds => {
     const dow = dowOf(ds);
@@ -267,7 +223,6 @@ function renderTable() {
   });
   thead += '</tr></thead>';
 
-  // tbody
   let tbody = '<tbody>';
 
   if (staffToShow.length === 0) {
@@ -277,7 +232,7 @@ function renderTable() {
     tbody += `<tr><td colspan="${dates.length + 1}" class="table-empty-cell">${msg}</td></tr>`;
   } else {
     staffToShow.forEach(staff => {
-      const sub = state.submissionMap.get(staff.id);
+      const sub         = state.submissionMap.get(staff.id);
       const isSubmitted = !!sub;
       tbody += `<tr class="${isSubmitted ? '' : 'row-unsubmitted'}">`;
 
@@ -285,7 +240,7 @@ function renderTable() {
       tbody += `<td class="col-staff" title="${staff.name}（${staff.id}）">${shortName.replace('\n', '<br>')}</td>`;
 
       dates.forEach(ds => {
-        const dow = dowOf(ds);
+        const dow    = dowOf(ds);
         const colCls = dow === 0 ? 'shift-cell sun-col' : dow === 6 ? 'shift-cell sat-col' : 'shift-cell';
 
         if (!isSubmitted) {
@@ -354,7 +309,6 @@ function renderShiftView() {
   const { dates } = state.dateInfo;
   const matrix = buildShiftMatrix();
 
-  // thead
   let thead = '<thead><tr><th class="col-staff shift-col-header" scope="col">シフト枠</th>';
   dates.forEach(ds => {
     const dow = dowOf(ds);
@@ -363,7 +317,6 @@ function renderShiftView() {
   });
   thead += '</tr></thead>';
 
-  // tbody
   let tbody = '<tbody>';
 
   if (state.shiftTypes.length === 0) {
@@ -381,9 +334,9 @@ function renderShiftView() {
       </td>`;
 
       dates.forEach(ds => {
-        const dow = dowOf(ds);
+        const dow    = dowOf(ds);
         const colCls = dow === 0 ? 'names-cell sun-col' : dow === 6 ? 'names-cell sat-col' : 'names-cell';
-        const names = cells[ds] || [];
+        const names  = cells[ds] || [];
         if (names.length === 0) {
           tbody += `<td class="${colCls}"></td>`;
         } else {
@@ -407,12 +360,12 @@ function renderCurrentView() {
 // ── Header ────────────────────────────────────────────────────────────────────
 
 function renderHeader() {
-  const orgName = getOrgName() || 'シフト管理システム';
+  const orgName = cachedOrgName || 'シフト管理システム';
   document.getElementById('headerProject').textContent = orgName;
   document.getElementById('subHeaderTitle').textContent =
     `${state.projectName}　${state.dateInfo.label} シフト一覧`;
   const managers = state.managers || [];
-  const total = state.staff.length;
+  const total    = state.staff.length;
   const submitted = state.staff.filter(s => state.submissionMap.has(s.id)).length;
   const managerStr = managers.length > 0
     ? '担当：' + managers.map(m => m.role ? `${m.name}（${m.role}）` : m.name).join('　') + '　'
@@ -425,7 +378,7 @@ function renderHeader() {
 
 function buildExportText() {
   const { label, dates } = state.dateInfo;
-  const header = `${state.projectName} ${label} 希望シフト一覧\n`;
+  const header    = `${state.projectName} ${label} 希望シフト一覧\n`;
   const separator = '─'.repeat(40) + '\n';
   let text = header + separator;
 
@@ -458,7 +411,7 @@ function buildExportText() {
 }
 
 async function doExport() {
-  const text = buildExportText();
+  const text    = buildExportText();
   const SUCCESS = 'シフト一覧をクリップボードにコピーしました';
 
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -516,28 +469,31 @@ function bindEvents() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-allRealProjects = loadAllProjects();
+async function init() {
+  const [projects, settings] = await Promise.all([dbLoadProjects(), dbLoadSettings()]);
+  allRealProjects = projects;
+  cachedOrgName   = settings.orgName || '';
 
-(function () {
   const lastId = localStorage.getItem('shiftSystem_lastDashboardProject');
   const exists = allRealProjects.find(p => p.id === lastId);
-  if (exists) {
-    switchProject(lastId);
-  } else if (allRealProjects.length > 0) {
-    switchProject(allRealProjects[0].id);
-  } else {
-    switchProject(null);
-  }
-})();
+  if (exists)                          await switchProject(lastId);
+  else if (allRealProjects.length > 0) await switchProject(allRealProjects[0].id);
+  else                                  await switchProject(null);
 
-bindEvents();
+  bindEvents();
+}
 
 // ── BFキャッシュ対策 ──────────────────────────────────────────────────────────
-window.addEventListener('pageshow', e => {
+
+window.addEventListener('pageshow', async e => {
   if (!e.persisted) return;
-  allRealProjects = loadAllProjects();
+  const [projects, settings] = await Promise.all([dbLoadProjects(), dbLoadSettings()]);
+  allRealProjects = projects;
+  cachedOrgName   = settings.orgName || '';
   const exists = allRealProjects.find(p => p.id === activeProjectId);
-  if (exists) switchProject(activeProjectId);
-  else if (allRealProjects.length > 0) switchProject(allRealProjects[0].id);
-  else switchProject(null);
+  if (exists)                          await switchProject(activeProjectId);
+  else if (allRealProjects.length > 0) await switchProject(allRealProjects[0].id);
+  else                                  await switchProject(null);
 });
+
+init();
