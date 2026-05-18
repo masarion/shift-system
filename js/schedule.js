@@ -276,14 +276,8 @@ function renderTable() {
         if (!isSubmitted) { tbody += `<td class="${colCls}"><span class="no-submission">−</span></td>`; return; }
         const shifts = sub.selections[ds] || [];
         if (shifts.length === 0) { tbody += `<td class="${colCls}"><span class="no-submission">—</span></td>`; return; }
-        const tags = shifts.map(id => {
-          const st = shiftById(id);
-          if (!st) return '';
-          const bg = id === 'off' ? '#E0E0E0' : st.color;
-          const fg = id === 'off' ? '#757575' : '#fff';
-          return `<span class="shift-tag${id === 'off' ? ' off' : ''}" style="background:${bg};color:${fg}" title="${st.label}">${st.short}</span>`;
-        }).join('');
-        tbody += `<td class="${colCls}"><div class="shift-tags">${tags}</div></td>`;
+        const lines = shifts.map(id => shiftById(id)?.label || '').filter(Boolean);
+        tbody += `<td class="${colCls}"><div class="shift-name-cell">${lines.join('<br>')}</div></td>`;
       });
       tbody += '</tr>';
     });

@@ -1472,6 +1472,16 @@
   transform: translateX(-50%) translateY(0);
 }
 
+/* ── シフト名テキスト表示（スタッフ別ビュー） ─────────────────────────────── */
+
+.shift-name-cell {
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-all;
+  color: var(--c-text-1);
+}
+
 /* ── リアルタイム更新バッジ ────────────────────────────────────────────────── */
 
 .realtime-badge {
