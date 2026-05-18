@@ -415,7 +415,7 @@ function buildExcelTsv() {
       dates.forEach(ds => {
         if (!sub) { cells.push('未提出'); return; }
         const shifts = sub.selections[ds] || [];
-        cells.push(shifts.map(id => shiftById(id)?.short || id).join('/'));
+        cells.push(shifts.map(id => shiftById(id)?.label || id).join('/'));
       });
       return cells;
     });
