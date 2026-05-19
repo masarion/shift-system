@@ -1,12 +1,10 @@
 // schedule.js — 月次シフト一覧ページ（Firestore リアルタイム対応 + Excelコピー）
 
-import { MOCK_DASHBOARD } from './mockDashboard.js';
 import {
   dbLoadProjects, dbLoadSettings, dbSubscribeSubmissions,
 } from './db.js';
 
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
-const d = MOCK_DASHBOARD;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -105,29 +103,6 @@ function switchProject(id) {
   document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
   document.querySelector('.filter-chip[data-filter="all"]').classList.add('active');
 
-  if (!id) {
-    // デモモード
-    const { year, month } = d.targetMonth;
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const dates = [];
-    for (let day = 1; day <= daysInMonth; day++) {
-      dates.push(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
-    }
-    state = {
-      staff: d.staff,
-      submissionMap: new Map(d.submissions.map(s => [s.staffId, s])),
-      shiftTypes: d.shiftTypes,
-      dateInfo: { label: `${year}年${month}月`, year, month, daysInMonth, dates, isMultiMonth: false },
-      projectName: d.project.name,
-      managers: [],
-    };
-    renderProjectSwitcher();
-    renderHeader();
-    renderLegend();
-    renderCurrentView();
-    return;
-  }
-
   const proj = allRealProjects.find(p => p.id === id);
   if (!proj) return;
 
@@ -174,13 +149,6 @@ function showRealtimeBadge() {
 function renderProjectSwitcher() {
   const bar = document.getElementById('projectSwitcher');
   bar.innerHTML = '';
-
-  const demoChip = document.createElement('button');
-  demoChip.className = `proj-chip${activeProjectId === null ? ' active' : ''}`;
-  demoChip.textContent = 'デモ';
-  demoChip.addEventListener('click', () => switchProject(null));
-  bar.appendChild(demoChip);
-
   allRealProjects.forEach(proj => {
     const chip = document.createElement('button');
     chip.className = `proj-chip${activeProjectId === proj.id ? ' active' : ''}`;
@@ -188,6 +156,16 @@ function renderProjectSwitcher() {
     chip.addEventListener('click', () => switchProject(proj.id));
     bar.appendChild(chip);
   });
+}
+
+function showEmptyState() {
+  renderProjectSwitcher();
+  document.getElementById('subHeaderTitle').textContent = '案件がありません';
+  document.getElementById('subHeaderMeta').textContent = '';
+  document.getElementById('scheduleTable').innerHTML =
+    `<tr><td class="table-empty-cell">案件がまだありません。
+     <a href="projects.html" style="color:var(--c-primary)">案件管理</a>から作成してください。</td></tr>`;
+  document.getElementById('legend').innerHTML = '';
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -520,11 +498,13 @@ async function init() {
   allRealProjects = projects;
   cachedOrgName   = settings.orgName || '';
 
-  const lastId = localStorage.getItem('shiftSystem_lastDashboardProject');
-  const exists  = allRealProjects.find(p => p.id === lastId);
-  if (exists)                          switchProject(lastId);
-  else if (allRealProjects.length > 0) switchProject(allRealProjects[0].id);
-  else                                  switchProject(null);
+  if (allRealProjects.length === 0) {
+    showEmptyState();
+  } else {
+    const lastId = localStorage.getItem('shiftSystem_lastDashboardProject');
+    const exists  = allRealProjects.find(p => p.id === lastId);
+    switchProject(exists ? lastId : allRealProjects[0].id);
+  }
 
   bindEvents();
 }
@@ -537,10 +517,12 @@ window.addEventListener('pageshow', async e => {
   const [projects, settings] = await Promise.all([dbLoadProjects(), dbLoadSettings()]);
   allRealProjects = projects;
   cachedOrgName   = settings.orgName || '';
-  const exists = allRealProjects.find(p => p.id === activeProjectId);
-  if (exists)                          switchProject(activeProjectId);
-  else if (allRealProjects.length > 0) switchProject(allRealProjects[0].id);
-  else                                  switchProject(null);
+  if (allRealProjects.length === 0) {
+    showEmptyState();
+  } else {
+    const exists = allRealProjects.find(p => p.id === activeProjectId);
+    switchProject(exists ? activeProjectId : allRealProjects[0].id);
+  }
 });
 
 init();

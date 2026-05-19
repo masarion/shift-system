@@ -30,7 +30,8 @@ class CalendarApp {
   }
 
   async _init() {
-    await this._resolveProject();
+    const ok = await this._resolveProject();
+    if (!ok) return;
 
     if (this.data.staffList && this.data.staffList.length > 0) {
       await this._showStaffPicker();
@@ -42,19 +43,27 @@ class CalendarApp {
 
   // ─── プロジェクト解決 ────────────────────────────────────────────────────────
 
+  _showFatalError(message) {
+    document.body.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                  min-height:100vh;padding:32px;text-align:center;color:#616161;gap:16px">
+        <div style="font-size:48px">⚠️</div>
+        <div style="font-size:15px;line-height:1.8;white-space:pre-line">${message}</div>
+        <a href="/" style="margin-top:8px;color:#1565C0;font-size:14px">トップへ戻る</a>
+      </div>`;
+  }
+
   async _resolveProject() {
     const pid = new URLSearchParams(location.search).get('pid');
     if (!pid) {
-      // デモモード — MOCK_DATA をそのまま使用
-      this.data = MOCK_DATA;
-      return;
+      this._showFatalError('URLが正しくありません。\n管理者から受け取ったURLを使用してください。');
+      return false;
     }
 
     const proj = await dbLoadProject(pid);
     if (!proj) {
-      // 案件が見つからない場合はデモにフォールバック
-      this.data = MOCK_DATA;
-      return;
+      this._showFatalError('案件が見つかりません。\nURLが正しいか管理者にご確認ください。');
+      return false;
     }
 
     this.projectId = pid;
@@ -90,6 +99,7 @@ class CalendarApp {
       infoMessage:    proj.infoMessage  ?? MOCK_DATA.infoMessage,
       confirmMessage: proj.confirmMessage ?? MOCK_DATA.confirmMessage,
     };
+    return true;
   }
 
   // ─── スタッフ認証ピッカー ─────────────────────────────────────────────────────
