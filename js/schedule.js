@@ -273,12 +273,12 @@ function buildShiftMatrix() {
   filteredStaff().forEach(staff => {
     const sub = state.submissionMap.get(staff.id);
     if (!sub) return;
-    const surname = staff.name.split(/[\s　]/)[0];
+    const fullName = staff.name;
     state.dateInfo.dates.forEach(ds => {
       (sub.selections[ds] || []).forEach(shiftId => {
         if (!matrix[shiftId]) return;
         if (!matrix[shiftId][ds]) matrix[shiftId][ds] = [];
-        if (!matrix[shiftId][ds].includes(surname)) matrix[shiftId][ds].push(surname);
+        if (!matrix[shiftId][ds].includes(fullName)) matrix[shiftId][ds].push(fullName);
       });
     });
   });
@@ -416,7 +416,7 @@ function buildExcelTsv() {
       const cells = [st.label];
       dates.forEach(ds => {
         const names = (matrix[st.id] || {})[ds] || [];
-        cells.push(names.join(' '));
+        cells.push(names.join('\n'));
       });
       return cells;
     });
