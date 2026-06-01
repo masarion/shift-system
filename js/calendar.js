@@ -1,6 +1,5 @@
 // calendar.js — スタッフ向けシフト提出ページ（Firestore バックエンド）
 
-import { MOCK_DATA } from './mockData.js';
 import {
   formatDate, formatDateJP, formatDateTimeJP,
   getDaysInMonth, getHolidayName, parseDateStr,
@@ -13,9 +12,56 @@ import {
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 const modal = new ModalController();
 
+// ── デフォルト文言 ────────────────────────────────────────────────────────────
+const DEFAULT_INFO_MESSAGE    = '提出期限を過ぎた場合はシフト調整ができかねる場合があります。ご不明な点は管理者にご連絡ください。';
+const DEFAULT_CONFIRM_MESSAGE = [
+  '送信ボタンを押す前に内容をよく確認してください',
+  '一度送信すると元に戻せません。修正したい場合は速やかに管理者に連絡してください',
+];
+const DEFAULT_COPY_GUIDE = '入力内容をコピーして手元に保存しておくことをお勧めします。下の「コピー」ボタンをご利用ください。';
+
+// ── 祝日データ ────────────────────────────────────────────────────────────────
+const HOLIDAYS = {
+  '2025-01-01': '元日',
+  '2025-01-13': '成人の日',
+  '2025-02-11': '建国記念の日',
+  '2025-02-23': '天皇誕生日',
+  '2025-02-24': '振替休日',
+  '2025-03-20': '春分の日',
+  '2025-04-29': '昭和の日',
+  '2025-05-03': '憲法記念日',
+  '2025-05-04': 'みどりの日',
+  '2025-05-05': 'こどもの日',
+  '2025-05-06': '振替休日',
+  '2025-07-21': '海の日',
+  '2025-08-11': '山の日',
+  '2025-09-15': '敬老の日',
+  '2025-09-23': '秋分の日',
+  '2025-10-13': 'スポーツの日',
+  '2025-11-03': '文化の日',
+  '2025-11-23': '勤労感謝の日',
+  '2025-11-24': '振替休日',
+  '2026-01-01': '元日',
+  '2026-01-12': '成人の日',
+  '2026-02-11': '建国記念の日',
+  '2026-02-23': '天皇誕生日',
+  '2026-03-20': '春分の日',
+  '2026-04-29': '昭和の日',
+  '2026-05-03': '憲法記念日',
+  '2026-05-04': 'みどりの日',
+  '2026-05-05': 'こどもの日',
+  '2026-07-20': '海の日',
+  '2026-08-11': '山の日',
+  '2026-09-21': '敬老の日',
+  '2026-09-23': '秋分の日',
+  '2026-10-12': 'スポーツの日',
+  '2026-11-03': '文化の日',
+  '2026-11-23': '勤労感謝の日',
+};
+
 class CalendarApp {
   constructor() {
-    this.data          = MOCK_DATA;  // _resolveProject() で上書き
+    this.data          = {};  // _resolveProject() で上書き
     this.projectId     = null;       // Firestore のプロジェクト ID
     this.submissionKey = null;       // submissions サブコレクションのドキュメントキー
     this.baseYm        = null;       // ym 部分（スタッフ ID を付ける前）
@@ -89,15 +135,17 @@ class CalendarApp {
     this.submissionKey = ym;  // スタッフ登録なしの場合はこのまま
 
     this.data = {
-      ...MOCK_DATA,
-      project:        { id: proj.id, name: proj.name },
-      targetPeriod:   targetPeriod || null,
+      staff:            null,           // _showStaffPicker() が上書き。未登録案件は null のまま
+      project:          { id: proj.id, name: proj.name },
+      targetPeriod:     targetPeriod || null,
       ...(targetMonth ? { targetMonth } : {}),
-      deadline:       new Date(proj.deadline),
-      shiftTypes:     proj.shiftTypes,
-      staffList:      proj.staff || [],
-      infoMessage:    proj.infoMessage  ?? MOCK_DATA.infoMessage,
-      confirmMessage: proj.confirmMessage ?? MOCK_DATA.confirmMessage,
+      deadline:         new Date(proj.deadline),
+      shiftTypes:       proj.shiftTypes,
+      staffList:        proj.staff || [],
+      infoMessage:      proj.infoMessage      ?? DEFAULT_INFO_MESSAGE,
+      confirmMessage:   proj.confirmMessage   ?? DEFAULT_CONFIRM_MESSAGE,
+      copyGuideMessage: proj.copyGuideMessage ?? DEFAULT_COPY_GUIDE,
+      holidays:         HOLIDAYS,
     };
     return true;
   }
@@ -176,36 +224,50 @@ class CalendarApp {
   _render() {
     this._renderHeader();
     this._renderCalendar();
+    this._renderCalendarNotes();
     this._renderActionBar();
     document.body.classList.toggle('is-submitted', this.submitted);
     requestAnimationFrame(() => this._adjustLayout());
   }
 
+  _renderCalendarNotes() {
+    const el = document.getElementById('calendarNotes');
+    if (!el) return;
+    el.value    = this.notes;
+    el.disabled = this.submitted;  // 提出後は読み取り専用
+  }
+
   _adjustLayout() {
-    const header   = document.querySelector('.app-header');
-    const infobar  = document.querySelector('.info-bar');
-    const msgbar   = document.getElementById('msgBar');
-    const banner   = document.getElementById('submittedBanner');
-    const progress = document.querySelector('.progress-bar');
-    const wrapper  = document.querySelector('.calendar-wrapper');
-    if (!header || !infobar || !msgbar || !progress || !wrapper) return;
+    const header  = document.querySelector('.app-header');
+    const infobar = document.querySelector('.info-bar');
+    const msgbar  = document.getElementById('msgBar');
+    if (!header || !infobar || !msgbar) return;
 
-    const hH = header.offsetHeight;
-    const hI = infobar.offsetHeight;
-    const hM = msgbar.offsetHeight;
-    const hP = progress.offsetHeight;
-    const hB = (banner && !banner.hidden) ? banner.offsetHeight : 0;
+    const topFixed = header.offsetHeight + infobar.offsetHeight + msgbar.offsetHeight;
 
-    const topProgress = hH + hI + hM;
-
-    if (banner) banner.style.top = `${topProgress}px`;
-    progress.style.top       = `${topProgress + hB}px`;
-    wrapper.style.paddingTop = `${topProgress + hB + hP}px`;
+    if (this.submitted) {
+      // 提出済み画面に固定ヘッダー分のパディングを設定
+      const screen = document.getElementById('submittedScreen');
+      if (screen) screen.style.paddingTop = `${topFixed + 32}px`;
+    } else {
+      const progress = document.querySelector('.progress-bar');
+      const wrapper  = document.querySelector('.calendar-wrapper');
+      if (progress) progress.style.top = `${topFixed}px`;
+      const hP = progress ? progress.offsetHeight : 0;
+      if (wrapper) wrapper.style.paddingTop = `${topFixed + hP}px`;
+    }
   }
 
   _renderHeader() {
+    const projName = this.data.project.name;
+
+    // ページタイトル
+    document.title = projName
+      ? `希望シフト提出 | ${projName}`
+      : '希望シフト提出';
+
     const projEl = document.querySelector('.header-project');
-    if (projEl) projEl.textContent = this.data.project.name;
+    if (projEl) projEl.textContent = projName;
 
     const staffEl = document.querySelector('.header-staff');
     if (staffEl) staffEl.textContent = this.data.staff ? this.data.staff.name : '';
@@ -238,14 +300,30 @@ class CalendarApp {
       infoMsgEl.textContent = this.data.infoMessage;
     }
 
-    const banner = document.getElementById('submittedBanner');
-    if (banner) {
-      if (this.submitted && this.submittedAt) {
-        banner.textContent = `✓ 提出済み　${formatDateTimeJP(new Date(this.submittedAt))}`;
-        banner.hidden = false;
-      } else {
-        banner.hidden = true;
+    // 提出済み画面にコンテンツを設定
+    const screenEl = document.getElementById('submittedScreen');
+    if (screenEl && this.submitted) {
+      let periodStr = '';
+      if (this.data.targetPeriod) {
+        const s = new Date(this.data.targetPeriod.startDate + 'T00:00:00');
+        const e = new Date(this.data.targetPeriod.endDate   + 'T00:00:00');
+        periodStr = `${s.getMonth()+1}月${s.getDate()}日〜${e.getMonth()+1}月${e.getDate()}日`;
+      } else if (this.data.targetMonth) {
+        const { year, month } = this.data.targetMonth;
+        periodStr = `${year}年${month}月`;
       }
+      const staffName = this.data.staff?.name || '';
+      const timeStr   = this.submittedAt ? formatDateTimeJP(new Date(this.submittedAt)) : '';
+      screenEl.innerHTML = `
+        <div class="submitted-screen-icon" aria-hidden="true">✓</div>
+        <div class="submitted-screen-title">提出済みです</div>
+        <div class="submitted-screen-detail">
+          ${this.data.project.name}<br>
+          ${periodStr}${staffName ? '<br>' + staffName : ''}
+        </div>
+        ${timeStr ? `<div class="submitted-screen-time">提出日時：${timeStr}</div>` : ''}
+        <div class="submitted-screen-note">修正が必要な場合は担当者にご連絡ください</div>
+      `;
     }
   }
 
@@ -367,22 +445,25 @@ class CalendarApp {
     return cell;
   }
 
-  _renderActionBar() {
-    const confirmBtn = document.getElementById('confirmBtn');
+  // ─── 締切判定 ───────────────────────────────────────────────────────────────
 
-    if (this.submitted) {
-      confirmBtn.disabled = true;
-      confirmBtn.textContent = '提出済み';
+  _isPastDeadline() {
+    return new Date() > this.data.deadline;
+  }
+
+  // ─── Action bar ──────────────────────────────────────────────────────────────
+
+  _renderActionBar() {
+    if (this.submitted) return;  // CSS で .action-bar ごと非表示になる
+
+    const confirmBtn = document.getElementById('confirmBtn');
+    const missing    = this._getMissingDays();
+    if (missing.length === 0) {
+      confirmBtn.textContent = '確認・提出 ✓';
+      confirmBtn.classList.add('btn-ready');
     } else {
-      const missing = this._getMissingDays();
-      confirmBtn.disabled = false;
-      if (missing.length === 0) {
-        confirmBtn.textContent = '確認・提出 ✓';
-        confirmBtn.classList.add('btn-ready');
-      } else {
-        confirmBtn.textContent = `確認・提出（残 ${missing.length} 日）`;
-        confirmBtn.classList.remove('btn-ready');
-      }
+      confirmBtn.textContent = `確認・提出（残 ${missing.length} 日）`;
+      confirmBtn.classList.remove('btn-ready');
     }
   }
 
@@ -495,6 +576,7 @@ class CalendarApp {
   // ─── Confirmation modal ──────────────────────────────────────────────────────
 
   _openConfirmModal() {
+    if (this.submitted) return;  // 提出済みは確認モーダルを開かせない（二重送信防止）
     const missing = this._getMissingDays();
     if (missing.length > 0) {
       this._highlightMissing(missing);
@@ -503,8 +585,25 @@ class CalendarApp {
     }
     this._clearMissingHighlight();
     this._buildConfirmTable();
-    document.getElementById('confirmNotes').value = this.notes;
 
+    // コピー案内メッセージ（日付表の上）
+    const copyGuideEl = document.getElementById('copyGuideMsg');
+    if (copyGuideEl) {
+      const msg = (this.data.copyGuideMessage || '').trim();
+      copyGuideEl.textContent = msg;
+      copyGuideEl.hidden = !msg;
+    }
+
+    // 特記事項：読み取り専用で表示（入力がある場合のみ）
+    const notesDisplay = document.getElementById('notesDisplay');
+    const notesText    = document.getElementById('notesDisplayText');
+    if (notesDisplay && notesText) {
+      const notes = this.notes.trim();
+      notesText.textContent = notes;
+      notesDisplay.hidden = !notes;
+    }
+
+    // 案件・スタッフ情報
     const metaEl = document.querySelector('.confirm-meta');
     if (metaEl) {
       let periodStr;
@@ -516,8 +615,9 @@ class CalendarApp {
         const { year, month } = this.data.targetMonth;
         periodStr = `${year}年${month}月`;
       }
-      const staff = this.data.staff || { name: '', id: '' };
-      metaEl.innerHTML = `${this.data.project.name}　${periodStr}<br>${staff.name}（${staff.id}）`;
+      const staffName2 = this.data.staff?.name || '';
+      metaEl.innerHTML = `${this.data.project.name}　${periodStr}`
+        + (staffName2 ? `<br>${staffName2}` : '');
     }
 
     const adminEl = document.getElementById('adminMsg');
@@ -573,12 +673,12 @@ class CalendarApp {
       const { year, month } = this.data.targetMonth;
       periodStr = `${year}年${month}月`;
     }
-    const staff = this.data.staff || { name: '', id: '' };
+    const staffName3 = this.data.staff?.name || '';
     const lines = [
       '【希望シフト提出】',
       `${this.data.project.name}`,
       periodStr,
-      `氏名: ${staff.name}（${staff.id}）`,
+      ...(staffName3 ? [`氏名: ${staffName3}`] : []),
       '',
     ];
     dates.forEach(ds => {
@@ -629,7 +729,7 @@ class CalendarApp {
   // ─── Submit ──────────────────────────────────────────────────────────────────
 
   async _submit() {
-    this.notes       = document.getElementById('confirmNotes').value;
+    // this.notes はカレンダー画面の #calendarNotes から既に同期済み
     this.submitted   = true;
     this.submittedAt = new Date().toISOString();
 
@@ -670,15 +770,14 @@ class CalendarApp {
     document.getElementById('shiftModalConfirm').addEventListener('click', () => this._confirmShift());
 
     document.getElementById('confirmBtn').addEventListener('click', () => this._openConfirmModal());
-    const goBackFromConfirm = () => {
-      this.notes = document.getElementById('confirmNotes').value;
-      modal.close('confirmModal');
-    };
+    const goBackFromConfirm = () => modal.close('confirmModal');
     document.getElementById('confirmModalClose').addEventListener('click', goBackFromConfirm);
     document.getElementById('confirmModalBack').addEventListener('click', goBackFromConfirm);
     document.getElementById('copyContentBtn').addEventListener('click', () => this._copyToClipboard());
     document.getElementById('submitBtn').addEventListener('click', () => this._submit());
-    document.getElementById('confirmNotes').addEventListener('input', e => {
+
+    // 特記事項：カレンダー画面で入力 → this.notes に同期
+    document.getElementById('calendarNotes').addEventListener('input', e => {
       this.notes = e.target.value;
     });
 
@@ -686,8 +785,13 @@ class CalendarApp {
       document.getElementById('successScreen').classList.remove('active');
     });
 
-    // 入力クリアボタン（確認ダイアログ付き）
+    // 入力クリアボタン（提出済みは完全ブロック）
     document.getElementById('clearBtn').addEventListener('click', async () => {
+      // 提出済みの場合はJS側でもガード（ボタンは非表示だが念のため）
+      if (this.submitted) {
+        this._showToast('提出済みのため変更できません。修正が必要な場合は管理者にご連絡ください。');
+        return;
+      }
       const ok = window.confirm('「OK」をタップすると入力したシフト希望をすべて削除します。この操作は元に戻せません。');
       if (!ok) return;
       if (this.projectId && this.submissionKey) {
@@ -717,7 +821,10 @@ document.addEventListener('DOMContentLoaded', () => {
   new CalendarApp();
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(err => {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      // 5分ごとに更新確認（PCブラウザのキャッシュ問題対策）
+      setInterval(() => reg.update(), 5 * 60 * 1000);
+    }).catch(err => {
       console.warn('[SW] registration failed:', err);
     });
   }
