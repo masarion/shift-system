@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="シフト提出">
-  <title>希望シフト提出 | 本社ビル警備</title>
+  <title>希望シフト提出</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/common.css">
   <link rel="stylesheet" href="css/staff.css">
@@ -18,23 +18,25 @@
 
   <header class="app-header" role="banner">
     <div class="header-inner">
-      <span class="header-project">本社ビル警備</span>
-      <span class="header-staff">山田太郎</span>
+      <span class="header-project"></span>
+      <span class="header-staff"></span>
     </div>
   </header>
 
   <div class="info-bar" role="complementary">
-    <span class="info-month">2025年6月 希望シフト提出</span>
+    <span class="info-month">希望シフト提出</span>
   </div>
 
-  <!-- Admin-editable message bar: deadline + custom message from mockData.infoMessage -->
+  <!-- Admin-editable message bar: deadline + custom message -->
   <div class="msg-bar" id="msgBar">
     <span id="deadline" class="msg-deadline"></span>
     <span id="infoMessage" class="msg-text"></span>
   </div>
 
-  <!-- Shown only after submission -->
-  <div id="submittedBanner" class="submitted-banner" hidden aria-live="polite"></div>
+  <!-- 提出済み画面（送信後にカレンダーの代わりに表示） -->
+  <div id="submittedScreen" class="submitted-screen">
+    <!-- Populated by calendar.js -->
+  </div>
 
   <div class="progress-bar" role="status" aria-live="polite">
     <span id="progress" class="progress-text">0 / 30 日入力済み</span>
@@ -43,8 +45,19 @@
   <!-- ══ Calendar ═══════════════════════════════════════════════════════════ -->
 
   <main class="calendar-wrapper" id="main">
-    <div class="calendar-grid" id="calendarGrid" role="grid" aria-label="2025年6月カレンダー">
+    <div class="calendar-grid" id="calendarGrid" role="grid" aria-label="カレンダー">
       <!-- Populated by calendar.js -->
+    </div>
+
+    <!-- 特記事項：カレンダー直下 -->
+    <div class="calendar-notes-section">
+      <label class="notes-label" for="calendarNotes">特記事項・連絡事項（任意）</label>
+      <textarea
+        id="calendarNotes"
+        class="notes-textarea"
+        placeholder="特記事項や管理者への連絡事項があれば入力してください"
+        rows="3"
+      ></textarea>
     </div>
   </main>
 
@@ -66,7 +79,7 @@
       <div class="modal-header">
         <button class="modal-close-btn" id="shiftModalClose" aria-label="閉じる">×</button>
         <h2 class="modal-title" id="shiftModalTitle">日付</h2>
-        <span style="width:40px" aria-hidden="true"></span><!-- spacer -->
+        <span style="width:40px" aria-hidden="true"></span>
       </div>
       <div class="modal-body" id="shiftModalBody">
         <!-- Rendered by calendar.js -->
@@ -90,11 +103,14 @@
       </div>
 
       <div class="confirm-meta" role="note">
-        本社ビル警備　2025年6月<br>
-        山田太郎（S001）
+        <!-- Populated by calendar.js _openConfirmModal() -->
       </div>
 
       <div class="modal-body">
+
+        <!-- コピー案内メッセージ（日付表の上・案件管理で編集可能） -->
+        <div class="copy-guide-box" id="copyGuideMsg" hidden></div>
+
         <table class="confirm-table" role="table">
           <thead>
             <tr>
@@ -108,20 +124,20 @@
           </tbody>
         </table>
 
-        <!-- Copy button placed directly below the shift table -->
+        <!-- コピーボタン（目立つデザイン） -->
         <div class="copy-section">
-          <button class="btn-copy-content" id="copyContentBtn">内容をコピー（任意）</button>
+          <button class="btn-copy-content" id="copyContentBtn">
+            <span class="copy-btn-icon">📋</span>
+            <span>内容をコピーして保存する</span>
+          </button>
         </div>
 
-        <div class="notes-section">
-          <label class="notes-label" for="confirmNotes">特記事項</label>
-          <textarea
-            id="confirmNotes"
-            class="notes-textarea"
-            placeholder="特記事項・連絡事項があれば入力してください"
-            rows="4"
-          ></textarea>
+        <!-- 特記事項（読み取り専用・入力がある場合のみ表示） -->
+        <div class="notes-display" id="notesDisplay" hidden>
+          <div class="notes-display-label">特記事項</div>
+          <div class="notes-display-text" id="notesDisplayText"></div>
         </div>
+
       </div>
 
       <div class="modal-footer">

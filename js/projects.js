@@ -120,6 +120,7 @@ function renderList() {
       <div class="project-card-actions">
         <button class="btn-action secondary" data-edit="${proj.id}">編集</button>
         <a class="btn-action primary" href="${url}" target="_blank">プレビュー</a>
+        <button class="btn-action copy" data-duplicate="${proj.id}">複製</button>
         <button class="btn-action danger" data-delete="${proj.id}">削除</button>
       </div>
     `;
@@ -129,6 +130,9 @@ function renderList() {
     });
     card.querySelector(`[data-edit="${proj.id}"]`).addEventListener('click', () => {
       openEditor(proj.id);
+    });
+    card.querySelector(`[data-duplicate="${proj.id}"]`).addEventListener('click', () => {
+      openEditor(null, { copyFrom: proj.id });
     });
     card.querySelector(`[data-delete="${proj.id}"]`).addEventListener('click', () => {
       deleteProject(proj.id);
@@ -238,46 +242,165 @@ function showColorPalette(targetBtn, currentColor, onChange) {
 
 // ── Editor ────────────────────────────────────────────────────────────────────
 
-function openEditor(id) {
-  editingId = id || null;
-  const proj = id ? projects.find(p => p.id === id) : null;
+// ── Create dialog（新規作成 or コピー選択） ─────────────────────────────────────
 
-  document.getElementById('editorTitle').textContent = proj ? '案件を編集' : '案件を作成';
+function showCreateDialog() {
+  document.getElementById('createDialogOverlay')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'createDialogOverlay';
+  overlay.className = 'create-dialog-overlay';
+
+  const options = projects.map(p =>
+    `<option value="${p.id}">${p.name}</option>`
+  ).join('');
+
+  overlay.innerHTML = `
+    <div class="create-dialog" role="dialog" aria-modal="true" aria-label="案件の作成方法を選択">
+      <div class="create-dialog-header">作成方法を選んでください</div>
+      <div class="create-dialog-body">
+
+        <button type="button" class="create-blank-btn" id="cdBlankBtn">
+          <span class="create-option-icon">📄</span>
+          <div>
+            <div class="create-option-label">空白から作成</div>
+            <div class="create-option-desc">新しい案件をゼロから作成します</div>
+          </div>
+        </button>
+
+        <div class="create-divider">または</div>
+
+        <div class="create-copy-section">
+          <div class="create-copy-label">📋 既存案件をコピーして作成</div>
+          <p class="create-copy-hint">シフト枠・スタッフ・担当者・メッセージを引き継ぎます<br>（案件名は「（コピー）〇〇」、提出期限・対象期間はリセット）</p>
+          <select class="form-select" id="cdCopySelect">${options}</select>
+          <button type="button" class="create-copy-btn" id="cdCopyBtn">この案件をコピーして作成</button>
+        </div>
+
+      </div>
+      <div class="create-dialog-footer">
+        <button type="button" class="create-cancel-btn" id="cdCancelBtn">キャンセル</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelector('#cdCancelBtn').addEventListener('click', close);
+
+  overlay.querySelector('#cdBlankBtn').addEventListener('click', () => {
+    close();
+    openEditor(null);
+  });
+
+  overlay.querySelector('#cdCopyBtn').addEventListener('click', () => {
+    const copyFromId = overlay.querySelector('#cdCopySelect').value;
+    close();
+    openEditor(null, { copyFrom: copyFromId });
+  });
+}
+
+// ── Editor open ───────────────────────────────────────────────────────────────
+
+// id        : 既存案件の編集（null = 新規）
+// copyFrom  : コピー元の案件ID（新規作成時のみ使用）
+function openEditor(id, { copyFrom = null } = {}) {
+  editingId = id || null;
+
+  const isCopy = !id && !!copyFrom;
+  const proj = id
+    ? projects.find(p => p.id === id)
+    : copyFrom ? projects.find(p => p.id === copyFrom)
+    : null;
+
+  document.getElementById('editorTitle').textContent = id ? '案件を編集' : '案件を作成';
 
   if (proj) {
-    document.getElementById('fldName').value       = proj.name;
-    document.getElementById('fldStartDate').value  = proj.startDate || '';
-    document.getElementById('fldEndDate').value    = proj.endDate   || '';
-    document.getElementById('fldDeadline').value   = proj.deadline ? proj.deadline.slice(0, 16) : '';
-    document.getElementById('fldInfoMsg').value    = proj.infoMessage || '';
-    document.getElementById('fldConfirmMsg').value = (proj.confirmMessage || []).join('\n');
-    document.getElementById('fldBaseUrl').value    = proj.baseUrl || '';
+    // 編集 or コピー
+    document.getElementById('fldName').value       = isCopy ? `（コピー）${proj.name}` : proj.name;
+    // 提出期限・対象期間：コピー時はリセット（毎回変わるため）
+    document.getElementById('fldStartDate').value  = isCopy ? '' : (proj.startDate || '');
+    document.getElementById('fldEndDate').value    = isCopy ? '' : (proj.endDate   || '');
+    document.getElementById('fldDeadline').value   = isCopy ? '' : (proj.deadline ? proj.deadline.slice(0, 16) : '');
+    // 以下はそのままコピー
+    document.getElementById('fldInfoMsg').value       = proj.infoMessage || '';
+    document.getElementById('fldCopyGuideMsg').value  = proj.copyGuideMessage || '';
+    document.getElementById('fldConfirmMsg').value    = (proj.confirmMessage || []).join('\n');
+    document.getElementById('fldBaseUrl').value       = proj.baseUrl || '';
     editorShiftTypes = proj.shiftTypes.map(s => ({ ...s }));
     editorStaff      = (proj.staff    || []).map(s => ({ ...s }));
     editorManagers   = (proj.managers || []).map(m => ({ ...m }));
   } else {
-    document.getElementById('fldName').value      = '';
-    document.getElementById('fldStartDate').value = '';
-    document.getElementById('fldEndDate').value   = '';
-    document.getElementById('fldDeadline').value  = '';
-    document.getElementById('fldInfoMsg').value   = '提出期限を過ぎた場合はシフト調整ができかねる場合があります。ご不明な点は管理者にご連絡ください。';
-    document.getElementById('fldConfirmMsg').value = '送信ボタンを押す前に内容をよく確認してください\n一度送信すると元に戻せません。修正したい場合は速やかに管理者に連絡してください';
-    document.getElementById('fldBaseUrl').value   = '';
+    document.getElementById('fldName').value          = '';
+    document.getElementById('fldStartDate').value     = '';
+    document.getElementById('fldEndDate').value       = '';
+    document.getElementById('fldDeadline').value      = '';
+    document.getElementById('fldInfoMsg').value       = '提出期限を過ぎた場合はシフト調整ができかねる場合があります。ご不明な点は管理者にご連絡ください。';
+    document.getElementById('fldCopyGuideMsg').value  = '入力内容をコピーして手元に保存しておくことをお勧めします。下のコピーボタンをご利用ください。';
+    document.getElementById('fldConfirmMsg').value    = '送信ボタンを押す前に内容をよく確認してください\n一度送信すると元に戻せません。修正したい場合は速やかに管理者に連絡してください';
+    document.getElementById('fldBaseUrl').value       = '';
     editorShiftTypes = NEW_SHIFT_TYPES.map(s => ({ ...s }));
     editorStaff      = [];
     editorManagers   = [];
   }
 
+  // 検索欄リセット
+  const searchInput = document.getElementById('staffSearch');
+  if (searchInput) searchInput.value = '';
+
   renderShiftEditor();
   renderManagerEditor();
   renderStaffEditor();
+  initAccordions();
   showPage('editor');
 }
+
+// ── Accordion helpers ─────────────────────────────────────────────────────────
+
+function setAccordion(sectionId, collapsed) {
+  const el = document.getElementById(sectionId);
+  if (!el) return;
+  el.classList.toggle('collapsed', collapsed);
+}
+
+function initAccordions() {
+  // 基本情報は常時展開（accordion-trigger なし）
+  // メッセージ・URL は常時展開スタート
+  setAccordion('sectionMsg',     false);
+  setAccordion('sectionUrl',     true);   // デフォルト折りたたみ
+  // シフト枠は常時展開（設定必須）
+  setAccordion('sectionShift',   false);
+  // 担当者・スタッフはデータがあれば折りたたみ
+  setAccordion('sectionManager', editorManagers.length > 0);
+  setAccordion('sectionStaff',   editorStaff.length > 0);
+}
+
+// アコーディオン クリックは editor-overlay にデリゲート（一度だけ登録）
+document.getElementById('editorOverlay').addEventListener('click', e => {
+  const trigger = e.target.closest('.accordion-trigger');
+  if (!trigger) return;
+  const sectionId = trigger.dataset.section;
+  if (!sectionId) return;
+  const section = document.getElementById(sectionId);
+  if (!section) return;
+  section.classList.toggle('collapsed');
+});
+
+// ── Shift editor ──────────────────────────────────────────────────────────────
 
 function renderShiftEditor() {
   const container = document.getElementById('shiftEditorList');
   if (!container) return;
   container.innerHTML = '';
+
+  // カウントバッジ更新
+  const badge = document.getElementById('shiftCountBadge');
+  if (badge) {
+    const n = editorShiftTypes.filter(s => s.label.trim()).length;
+    badge.textContent = n > 0 ? `${n}枠` : '';
+  }
 
   editorShiftTypes.forEach((st, idx) => {
     const row = document.createElement('div');
@@ -391,6 +514,10 @@ function renderManagerEditor() {
   if (!container) return;
   container.innerHTML = '';
 
+  // カウントバッジ更新
+  const badge = document.getElementById('managerCountBadge');
+  if (badge) badge.textContent = editorManagers.length > 0 ? `${editorManagers.length}名` : '';
+
   editorManagers.forEach((m, idx) => {
     const row = document.createElement('div');
     row.className = 'manager-editor-row';
@@ -445,7 +572,25 @@ function renderStaffEditor() {
   if (!container) return;
   container.innerHTML = '';
 
+  // カウントバッジ更新
+  const badge = document.getElementById('staffCountBadge');
+  if (badge) badge.textContent = editorStaff.length > 0 ? `${editorStaff.length}名` : '';
+
+  // 検索クエリ取得
+  const query = (document.getElementById('staffSearch')?.value || '').trim().toLowerCase();
+
+  let visibleCount = 0;
+
   editorStaff.forEach((s, idx) => {
+    // 検索フィルタ：コードまたは名前に一致するものだけ表示
+    if (query) {
+      const matchCode = (s.code || '').toLowerCase().includes(query);
+      const matchName = (s.name || '').toLowerCase().includes(query);
+      if (!matchCode && !matchName) return;
+    }
+
+    visibleCount++;
+
     const row = document.createElement('div');
     row.className = 'staff-editor-row';
 
@@ -481,6 +626,14 @@ function renderStaffEditor() {
     container.appendChild(row);
   });
 
+  // 検索結果なし表示
+  if (query && visibleCount === 0) {
+    const noResult = document.createElement('p');
+    noResult.className = 'staff-no-results';
+    noResult.textContent = `「${query}」に該当するスタッフが見つかりません`;
+    container.appendChild(noResult);
+  }
+
   const addBtn = document.createElement('button');
   addBtn.type = 'button';
   addBtn.className = 'shift-row-add-btn';
@@ -492,6 +645,123 @@ function renderStaffEditor() {
     rows[rows.length - 1]?.querySelector('.staff-code-input')?.focus();
   });
   container.appendChild(addBtn);
+
+  // ── CSVインポートボタン ──────────────────────────────────────────────────────
+  const csvBtn = document.createElement('button');
+  csvBtn.type = 'button';
+  csvBtn.className = 'shift-row-add-btn csv-import-btn';
+  csvBtn.textContent = '📋 CSVからインポート';
+  csvBtn.addEventListener('click', () => {
+    const existing = container.querySelector('.csv-import-panel');
+    if (existing) { existing.remove(); return; }
+    showCsvImportPanel(container);
+  });
+  container.appendChild(csvBtn);
+}
+
+// ── CSV Import Panel ──────────────────────────────────────────────────────────
+
+// ヘッダー行と見なすキーワード
+const CSV_HEADER_KEYWORDS = ['コード', 'code', 'スタッフ', '氏名', '名前', 'id', 'no', 'no.', '番号'];
+
+function isCsvHeaderRow(fields) {
+  const first = (fields[0] || '').trim().toLowerCase();
+  return CSV_HEADER_KEYWORDS.some(kw => first.includes(kw));
+}
+
+function parseCsvStaff(raw) {
+  const lines = raw.split(/\r?\n/);
+  const results = [];   // { code, name }
+  const errors  = [];   // string messages
+
+  lines.forEach((line, lineIdx) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;  // 空行スキップ
+
+    // カンマ区切り or タブ区切り
+    const sep = trimmed.includes('\t') ? '\t' : ',';
+    const fields = trimmed.split(sep).map(f => f.trim());
+
+    // ヘッダー行スキップ
+    if (isCsvHeaderRow(fields)) return;
+
+    const code = fields[0] || '';
+    const name = fields[1] || '';
+
+    if (!name) {
+      errors.push(`${lineIdx + 1}行目: 名前が空です（スキップ）`);
+      return;
+    }
+
+    results.push({ code, name });
+  });
+
+  return { results, errors };
+}
+
+function showCsvImportPanel(container) {
+  const panel = document.createElement('div');
+  panel.className = 'csv-import-panel';
+
+  panel.innerHTML = `
+    <div class="csv-import-header">
+      <span class="csv-import-title">CSVインポート</span>
+      <button type="button" class="csv-close-btn" title="閉じる">×</button>
+    </div>
+    <p class="csv-import-hint">
+      1行に <code>コード,名前</code>（またはタブ区切り）の形式で貼り付けてください。<br>
+      Excelからコピーしたデータも使えます。
+    </p>
+    <textarea class="csv-textarea" placeholder="例：&#10;S001,田中 太郎&#10;S002,山田 花子&#10;S003,鈴木 次郎" rows="8"></textarea>
+    <div class="csv-import-actions">
+      <button type="button" class="csv-execute-btn">インポート実行</button>
+      <button type="button" class="csv-cancel-btn">キャンセル</button>
+    </div>
+    <div class="csv-preview-area" style="display:none"></div>
+  `;
+
+  container.appendChild(panel);
+  panel.querySelector('.csv-textarea').focus();
+
+  panel.querySelector('.csv-close-btn').addEventListener('click', () => panel.remove());
+  panel.querySelector('.csv-cancel-btn').addEventListener('click', () => panel.remove());
+
+  panel.querySelector('.csv-execute-btn').addEventListener('click', () => {
+    const raw = panel.querySelector('.csv-textarea').value;
+    if (!raw.trim()) { showToast('データを貼り付けてください'); return; }
+
+    const { results, errors } = parseCsvStaff(raw);
+    if (results.length === 0) {
+      showToast('インポートできる行がありませんでした');
+      return;
+    }
+
+    // 既存コードと重複チェック
+    const existingCodes = new Set(editorStaff.map(s => (s.code || '').trim()).filter(Boolean));
+    const skippedDup = [];
+    const toAdd = [];
+
+    results.forEach(({ code, name }) => {
+      const c = code.trim();
+      if (c && existingCodes.has(c)) {
+        skippedDup.push(`${c}（${name}）`);
+      } else {
+        if (c) existingCodes.add(c);
+        toAdd.push({ id: `staff-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, code: c, name: name.trim() });
+      }
+    });
+
+    // 追加実行
+    editorStaff.push(...toAdd);
+    renderStaffEditor();
+    panel.remove();
+
+    // 結果トースト
+    let msg = `${toAdd.length}名をインポートしました`;
+    if (skippedDup.length) msg += `（重複スキップ: ${skippedDup.length}名）`;
+    if (errors.length)     msg += `（エラー: ${errors.length}行）`;
+    showToast(msg, 4000);
+  });
 }
 
 async function saveEditor() {
@@ -499,10 +769,11 @@ async function saveEditor() {
   const startDate  = document.getElementById('fldStartDate').value;
   const endDate    = document.getElementById('fldEndDate').value;
   const deadline   = document.getElementById('fldDeadline').value;
-  const infoMsg    = document.getElementById('fldInfoMsg').value.trim();
-  const confirmMsg = document.getElementById('fldConfirmMsg').value
+  const infoMsg       = document.getElementById('fldInfoMsg').value.trim();
+  const copyGuideMsg  = document.getElementById('fldCopyGuideMsg').value.trim();
+  const confirmMsg    = document.getElementById('fldConfirmMsg').value
     .split('\n').map(l => l.trim()).filter(Boolean);
-  const baseUrl    = document.getElementById('fldBaseUrl').value.trim();
+  const baseUrl       = document.getElementById('fldBaseUrl').value.trim();
 
   if (!name)     { showToast('案件名を入力してください'); return; }
   if (!deadline) { showToast('提出期限を設定してください'); return; }
@@ -563,8 +834,9 @@ async function saveEditor() {
     shiftTypes,
     staff,
     managers,
-    infoMessage: infoMsg,
-    confirmMessage: confirmMsg,
+    infoMessage:      infoMsg,
+    copyGuideMessage: copyGuideMsg,
+    confirmMessage:   confirmMsg,
     baseUrl,
     updatedAt: new Date().toISOString(),
     ...periodFields,
@@ -621,10 +893,20 @@ function showToast(msg, duration = 3000) {
 
 // ── Events ───────────────────────────────────────────────────────────────────
 
-document.getElementById('addProjectBtn').addEventListener('click', () => openEditor(null));
+document.getElementById('addProjectBtn').addEventListener('click', () => {
+  // 既存案件がある場合はダイアログを表示、なければ直接空白エディタ
+  if (projects.length > 0) {
+    showCreateDialog();
+  } else {
+    openEditor(null);
+  }
+});
 document.getElementById('editorBack').addEventListener('click', () => showPage('list'));
 document.getElementById('editorSave').addEventListener('click', saveEditor);
 document.getElementById('editorSaveBottom').addEventListener('click', saveEditor);
+
+// スタッフ検索 — 入力のたびに再描画
+document.getElementById('staffSearch').addEventListener('input', () => renderStaffEditor());
 
 // ── BFキャッシュ対策 ──────────────────────────────────────────────────────────
 

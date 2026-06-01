@@ -48,104 +48,154 @@
         編集後は画面上部または下部の「<strong>保存する</strong>」ボタンを必ず押してください
       </div>
 
-      <!-- 基本情報 -->
-      <div class="form-section">
-        <div class="form-section-title">基本情報</div>
+      <div class="editor-grid">
 
-        <div class="form-row">
-          <label class="form-label" for="fldName">案件名 *</label>
-          <input class="form-input" type="text" id="fldName" placeholder="例：本社ビル警備" maxlength="50">
-        </div>
+        <!-- ── 左カラム ── -->
+        <div class="editor-col">
 
-        <div class="form-row">
-          <span class="form-label">対象期間（任意）</span>
-          <p class="form-hint">通常は空白状態で翌月分が表示されます。年末年始など月をまたぐ場合のみ設定してください。</p>
-          <div class="date-range-row">
-            <input class="form-input" type="date" id="fldStartDate">
-            <span class="date-range-sep">〜</span>
-            <input class="form-input" type="date" id="fldEndDate">
+          <!-- 基本情報（常時展開） -->
+          <div class="form-section">
+            <div class="form-section-title">基本情報</div>
+
+            <div class="form-row">
+              <label class="form-label" for="fldName">案件名 *</label>
+              <input class="form-input" type="text" id="fldName" placeholder="例：本社ビル警備" maxlength="50">
+            </div>
+
+            <div class="form-row">
+              <span class="form-label">対象期間（任意）</span>
+              <p class="form-hint">通常は空白状態で翌月分が表示されます。年末年始など月をまたぐ場合のみ設定してください。</p>
+              <div class="date-range-row">
+                <input class="form-input" type="date" id="fldStartDate">
+                <span class="date-range-sep">〜</span>
+                <input class="form-input" type="date" id="fldEndDate">
+              </div>
+              <p class="form-hint" style="margin-top:6px">空白のままにすると、保存時点の翌月（1日〜末日）が自動設定されます。</p>
+            </div>
+
+            <div class="form-row">
+              <label class="form-label" for="fldDeadline">提出期限 *</label>
+              <input class="form-input" type="datetime-local" id="fldDeadline">
+            </div>
           </div>
-          <p class="form-hint" style="margin-top:6px">空白のままにすると、保存時点の翌月（1日〜末日）が自動設定されます。</p>
-        </div>
 
-        <div class="form-row">
-          <label class="form-label" for="fldDeadline">提出期限 *</label>
-          <input class="form-input" type="datetime-local" id="fldDeadline">
-        </div>
-      </div>
+          <!-- メッセージ設定（アコーディオン） -->
+          <div class="form-section" id="sectionMsg">
+            <div class="form-section-title accordion-trigger" data-section="sectionMsg">
+              <span>メッセージ設定</span>
+              <span class="accordion-icon">▾</span>
+            </div>
+            <div class="accordion-body">
+              <div class="form-row">
+                <label class="form-label" for="fldInfoMsg">お知らせ（カレンダー上部）</label>
+                <textarea class="form-textarea" id="fldInfoMsg" rows="3"
+                  placeholder="スタッフに表示するお知らせを入力してください"></textarea>
+              </div>
+              <div class="form-row">
+                <label class="form-label" for="fldCopyGuideMsg">コピー案内メッセージ（確認画面の日付表の上）</label>
+                <textarea class="form-textarea" id="fldCopyGuideMsg" rows="2"
+                  placeholder="例：入力内容をコピーして手元に保存しておくことをお勧めします。下のコピーボタンをご利用ください。"></textarea>
+              </div>
+              <div class="form-row">
+                <label class="form-label" for="fldConfirmMsg">確認画面メッセージ（送信ボタン上部）</label>
+                <textarea class="form-textarea" id="fldConfirmMsg" rows="4"
+                  placeholder="1行につき1メッセージを入力してください&#10;例：送信前に内容を確認してください&#10;一度送信すると取り消せません"></textarea>
+              </div>
+            </div>
+          </div>
 
-      <!-- メッセージ -->
-      <div class="form-section">
-        <div class="form-section-title">メッセージ設定</div>
+          <!-- URL / QR（アコーディオン） -->
+          <div class="form-section" id="sectionUrl">
+            <div class="form-section-title accordion-trigger" data-section="sectionUrl">
+              <span>URL・QRコード</span>
+              <span class="accordion-icon">▾</span>
+            </div>
+            <div class="accordion-body">
+              <div class="form-row">
+                <label class="form-label" for="fldBaseUrl">ベースURL（任意）</label>
+                <input class="form-input" type="url" id="fldBaseUrl"
+                  placeholder="https://shift-system-1b4a1.web.app">
+                <p style="font-size:11px;color:var(--c-text-2);margin-top:6px">
+                  空白のままにすると現在のファイルパスを使用します。<br>
+                  本番環境のドメインを入力するとQRコードに反映されます。
+                </p>
+              </div>
+            </div>
+          </div>
 
-        <div class="form-row">
-          <label class="form-label" for="fldInfoMsg">お知らせ（カレンダー上部）</label>
-          <textarea class="form-textarea" id="fldInfoMsg" rows="3"
-            placeholder="スタッフに表示するお知らせを入力してください"></textarea>
-        </div>
+        </div><!-- /editor-col left -->
 
-        <div class="form-row">
-          <label class="form-label" for="fldConfirmMsg">確認画面メッセージ（送信ボタン上部）</label>
-          <textarea class="form-textarea" id="fldConfirmMsg" rows="4"
-            placeholder="1行につき1メッセージを入力してください&#10;例：送信前に内容を確認してください&#10;一度送信すると取り消せません"></textarea>
-        </div>
-      </div>
+        <!-- ── 右カラム ── -->
+        <div class="editor-col">
 
-      <!-- シフト枠 -->
-      <div class="form-section">
-        <div class="form-section-title">シフト枠設定</div>
-        <div style="padding:8px 16px;font-size:11px;color:var(--c-text-2);background:#F5F5F5;border-bottom:1px solid var(--c-border)">
-          左端の <strong>⠿</strong> をドラッグして並び順を変更できます。シフト名は長文でも入力できます。時間帯は未入力でも可。
-        </div>
-        <div class="shift-editor-header-row">
-          <span></span><span></span><span>シフト名（長文可）</span><span>略称</span><span>時間帯（任意）</span><span></span>
-        </div>
-        <div class="shift-editor-list" id="shiftEditorList">
-          <!-- Rendered by projects.js -->
-        </div>
-      </div>
+          <!-- シフト枠設定（アコーディオン） -->
+          <div class="form-section" id="sectionShift">
+            <div class="form-section-title accordion-trigger" data-section="sectionShift">
+              <span>シフト枠設定</span>
+              <span class="accordion-meta" id="shiftCountBadge"></span>
+              <span class="accordion-icon">▾</span>
+            </div>
+            <div class="accordion-body">
+              <div style="padding:8px 16px;font-size:11px;color:var(--c-text-2);background:#F5F5F5;border-bottom:1px solid var(--c-border)">
+                左端の <strong>⠿</strong> をドラッグして並び順を変更できます。シフト名は長文でも入力できます。時間帯は未入力でも可。
+              </div>
+              <div class="shift-editor-header-row">
+                <span></span><span></span><span>シフト名（長文可）</span><span>略称</span><span>時間帯（任意）</span><span></span>
+              </div>
+              <div class="shift-editor-list" id="shiftEditorList">
+                <!-- Rendered by projects.js -->
+              </div>
+            </div>
+          </div>
 
-      <!-- 担当者登録 -->
-      <div class="form-section">
-        <div class="form-section-title">担当者</div>
-        <div style="padding:8px 16px;font-size:11px;color:var(--c-text-2);background:#F5F5F5;border-bottom:1px solid var(--c-border)">
-          この案件を担当する管理者・責任者を登録します。複数名入力できます。
-        </div>
-        <div class="manager-editor-header-row">
-          <span>役割（任意）</span><span>氏名</span><span></span>
-        </div>
-        <div class="manager-editor-list" id="managerEditorList">
-          <!-- Rendered by projects.js -->
-        </div>
-      </div>
+          <!-- 担当者登録（アコーディオン） -->
+          <div class="form-section" id="sectionManager">
+            <div class="form-section-title accordion-trigger" data-section="sectionManager">
+              <span>担当者</span>
+              <span class="accordion-meta" id="managerCountBadge"></span>
+              <span class="accordion-icon">▾</span>
+            </div>
+            <div class="accordion-body">
+              <div style="padding:8px 16px;font-size:11px;color:var(--c-text-2);background:#F5F5F5;border-bottom:1px solid var(--c-border)">
+                この案件を担当する管理者・責任者を登録します。複数名入力できます。
+              </div>
+              <div class="manager-editor-header-row">
+                <span>役割（任意）</span><span>氏名</span><span></span>
+              </div>
+              <div class="manager-editor-list" id="managerEditorList">
+                <!-- Rendered by projects.js -->
+              </div>
+            </div>
+          </div>
 
-      <!-- スタッフ登録 -->
-      <div class="form-section">
-        <div class="form-section-title">スタッフ登録</div>
-        <div style="padding:8px 16px;font-size:11px;color:var(--c-text-2);background:#F5F5F5;border-bottom:1px solid var(--c-border)">
-          登録するとシフト提出ページでコード入力による本人確認が表示されます。未登録の場合は名前選択なしで提出できます。
-        </div>
-        <div class="staff-editor-header-row" style="grid-template-columns:90px 1fr 32px">
-          <span>コード</span><span>氏名</span><span></span>
-        </div>
-        <div class="staff-editor-list" id="staffEditorList">
-          <!-- Rendered by projects.js -->
-        </div>
-      </div>
+          <!-- スタッフ登録（アコーディオン ＋ 検索） -->
+          <div class="form-section" id="sectionStaff">
+            <div class="form-section-title accordion-trigger" data-section="sectionStaff">
+              <span>スタッフ登録</span>
+              <span class="accordion-meta" id="staffCountBadge"></span>
+              <span class="accordion-icon">▾</span>
+            </div>
+            <div class="accordion-body">
+              <div style="padding:8px 16px;font-size:11px;color:var(--c-text-2);background:#F5F5F5;border-bottom:1px solid var(--c-border)">
+                登録するとシフト提出ページでコード入力による本人確認が表示されます。未登録の場合は名前選択なしで提出できます。
+              </div>
+              <!-- スタッフ検索バー -->
+              <div class="staff-search-wrap">
+                <input type="search" class="staff-search-input" id="staffSearch"
+                  placeholder="🔍 コード・名前で検索...">
+              </div>
+              <div class="staff-editor-header-row" style="grid-template-columns:90px 1fr 32px">
+                <span>コード</span><span>氏名</span><span></span>
+              </div>
+              <div class="staff-editor-list" id="staffEditorList">
+                <!-- Rendered by projects.js -->
+              </div>
+            </div>
+          </div>
 
-      <!-- URL / QR -->
-      <div class="form-section">
-        <div class="form-section-title">URL・QRコード</div>
-        <div class="form-row">
-          <label class="form-label" for="fldBaseUrl">ベースURL（任意）</label>
-          <input class="form-input" type="url" id="fldBaseUrl"
-            placeholder="https://example.azurestaticapps.net">
-          <p style="font-size:11px;color:var(--c-text-2);margin-top:6px">
-            空白のままにすると現在のファイルパスを使用します。<br>
-            本番環境のドメインを入力するとQRコードに反映されます。
-          </p>
-        </div>
-      </div>
+        </div><!-- /editor-col right -->
+
+      </div><!-- /editor-grid -->
 
       <!-- 下部保存ボタン -->
       <button class="btn-editor-save-bottom" id="editorSaveBottom">保存する</button>

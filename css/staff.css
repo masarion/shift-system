@@ -84,22 +84,6 @@
   white-space: normal; /* allow wrapping */
 }
 
-/* Submitted banner */
-.submitted-banner {
-  position: fixed;
-  top: calc(var(--h-header) + var(--h-infobar) + var(--h-msgbar));
-  left: 0; right: 0;
-  height: var(--h-banner);
-  background: var(--c-success);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  z-index: 180;
-}
-
 /* Progress bar */
 .progress-bar {
   position: fixed;
@@ -115,10 +99,10 @@
   z-index: 170;
 }
 
-/* When submitted: banner is visible, shift progress bar down */
-body.is-submitted .progress-bar {
-  top: calc(var(--h-header) + var(--h-infobar) + var(--h-msgbar) + var(--h-banner));
-}
+/* When submitted: hide progress bar and action bar — submitted-screen is shown instead */
+body.is-submitted .progress-bar { display: none; }
+body.is-submitted .action-bar   { display: none; }
+body.is-submitted .calendar-wrapper { display: none; }
 
 .progress-text {
   font-size: var(--fs-sm);
@@ -184,9 +168,7 @@ body.is-submitted .progress-bar {
   padding-right: env(safe-area-inset-right);
 }
 
-body.is-submitted .calendar-wrapper {
-  padding-top: calc(var(--h-header) + var(--h-infobar) + var(--h-msgbar) + var(--h-banner) + var(--h-progress));
-}
+/* (submitted-screen padding-top is set dynamically by calendar.js _adjustLayout) */
 
 /* ── Calendar grid ───────────────────────────────────────────────────────── */
 
@@ -255,23 +237,32 @@ body.is-submitted .calendar-wrapper {
 
 /* Cell internals */
 .cell-num {
-  font-size: 13px;
+  /* スマホで崩れない範囲で最大限大きく：375px=18px、414px=20px、768px=26px */
+  font-size: clamp(17px, 5vw, 26px);
   font-weight: 700;
   color: var(--c-text);
   line-height: 1;
+  letter-spacing: -0.02em;
 }
 
 .col-sun .cell-num { color: var(--c-sun); }
 .col-sat .cell-num { color: var(--c-sat); }
 
+/* 祝日セル：日曜（#FFF5F5）と明確に区別できる背景 ＋ 赤いトップアクセント */
+.cal-cell.is-holiday {
+  background: #FFEBEE !important;
+  box-shadow: inset 0 3px 0 0 #E53935;
+}
+
 .cell-holiday-name {
   font-size: 8px;
-  color: var(--c-sun);
+  color: #B71C1C;
+  font-weight: 700;
   line-height: 1.3;
-  margin-top: 1px;
+  margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: clip;
+  text-overflow: ellipsis;
   max-width: 100%;
 }
 
@@ -577,9 +568,97 @@ body.is-submitted .calendar-wrapper {
   font-weight: 500;
 }
 
-/* Copy button — placed between table and notes */
+/* ── 特記事項：カレンダー直下 ─────────────────────────────────────────────── */
+
+.calendar-notes-section {
+  padding: 14px 16px 16px;
+  background: var(--c-surface);
+  border-top: 1px solid var(--c-border);
+}
+
+/* ── 提出済み画面（カレンダーの代わりに全面表示） ─────────────────────────── */
+
+.submitted-screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 160;                  /* fixed bars(185+) の下、calendar(通常)の上 */
+  background: var(--c-bg);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 24px 40px;
+  text-align: center;
+}
+
+body.is-submitted .submitted-screen {
+  display: flex;
+}
+
+.submitted-screen-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #43A047;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+.submitted-screen-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #2E7D32;
+  margin-bottom: 14px;
+}
+
+.submitted-screen-detail {
+  font-size: var(--fs-md);
+  color: var(--c-text-2);
+  line-height: 1.9;
+  margin-bottom: 8px;
+}
+
+.submitted-screen-time {
+  font-size: var(--fs-sm);
+  color: var(--c-text-3);
+  margin-bottom: 28px;
+}
+
+.submitted-screen-note {
+  width: 100%;
+  max-width: 360px;
+  padding: 16px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  color: var(--c-text-2);
+  line-height: 1.7;
+}
+
+/* ── コピー案内メッセージ（確認画面の日付表の上） ───────────────────────────── */
+
+.copy-guide-box {
+  margin: 0 0 0 0;
+  padding: 10px 16px;
+  background: #E3F2FD;
+  border-bottom: 1px solid #90CAF9;
+  font-size: var(--fs-sm);
+  color: #0D47A1;
+  line-height: 1.6;
+}
+
+/* ── Copy button — 目立つデザイン ────────────────────────────────────────── */
+
 .copy-section {
-  padding: 12px 16px;
+  padding: 16px 16px 8px;
   border-top: 1px solid var(--c-border);
 }
 
@@ -587,19 +666,45 @@ body.is-submitted .calendar-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  padding: 11px 16px;
-  border: 1.5px dashed var(--c-primary);
+  padding: 15px 16px;
   border-radius: var(--r-md);
-  color: var(--c-primary);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  background: transparent;
-  transition: background var(--ease);
+  background: #2E7D32;
+  color: #fff;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(46,125,50,0.35);
+  transition: background var(--ease), box-shadow var(--ease);
 }
-.btn-copy-content::before { content: '📋'; font-size: 15px; }
-.btn-copy-content:active   { background: #E3F2FD; }
+
+.copy-btn-icon { font-size: 18px; line-height: 1; }
+
+.btn-copy-content:hover  { background: #1B5E20; }
+.btn-copy-content:active { background: #1B5E20; box-shadow: none; }
+
+/* ── 特記事項 読み取り専用（確認画面内） ────────────────────────────────────── */
+
+.notes-display {
+  margin: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--c-border);
+  background: #FAFAFA;
+}
+
+.notes-display-label {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--c-text-2);
+  margin-bottom: 6px;
+}
+
+.notes-display-text {
+  font-size: var(--fs-sm);
+  color: var(--c-text);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
 
 /* Admin message — above footer buttons */
 .admin-msg {
@@ -616,12 +721,7 @@ body.is-submitted .calendar-wrapper {
 .admin-msg p { margin: 0; }
 .admin-msg p + p { margin-top: 4px; }
 
-/* Notes section inside confirm modal */
-.notes-section {
-  padding: 16px;
-  border-top: 8px solid var(--c-bg);
-}
-
+/* Notes label / textarea — shared by calendar screen and confirm modal */
 .notes-label {
   display: block;
   font-size: var(--fs-sm);
@@ -647,6 +747,14 @@ body.is-submitted .calendar-wrapper {
 .notes-textarea:focus {
   outline: none;
   border-color: var(--c-primary);
+}
+
+/* 提出後：特記事項は読み取り専用表示 */
+body.is-submitted .notes-textarea {
+  background: #F5F5F5;
+  color: var(--c-text-2);
+  pointer-events: none;
+  resize: none;
 }
 
 .btn-submit {
