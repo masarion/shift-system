@@ -1,31 +1,15 @@
-// sw.js — Service Worker (cache-first strategy)
+// sw.js — Service Worker
+// HTMLページ（ナビゲーション）はキャッシュせず常にネットワークから取得。
+// JS / CSS / 画像等の静的アセットのみ network-first でキャッシュ。
 
-const CACHE = 'shift-system-v1';
-
-const ASSETS = [
-  './',
-  './index.html',
-  './staff.html',
-  './css/common.css',
-  './css/staff.css',
-  './js/mockData.js',
-  './js/utils.js',
-  './js/storage.js',
-  './js/modal.js',
-  './js/calendar.js',
-  './manifest.json',
-  './icons/icon-192.svg',
-  './icons/icon-512.svg',
-];
+const CACHE = 'shift-system-v4';
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(ASSETS))
-  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
+  // 古いバージョンのキャッシュをすべて削除
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
@@ -35,20 +19,22 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Only handle GET requests for same-origin assets
   if (event.request.method !== 'GET') return;
 
+  // ── HTMLページ（画面遷移）は SW をスルーして常に新鮮なレスポンスを返す ──
+  // Ctrl+Shift+R と同じ動作をページ遷移でも実現する
+  if (event.request.mode === 'navigate') return;
+
+  // ── 静的アセット（JS / CSS / 画像）は network-first でキャッシュ ──
   event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
-      return fetch(event.request).then(response => {
-        // Cache successful responses for same-origin requests
+    fetch(event.request)
+      .then(response => {
         if (response.ok && event.request.url.startsWith(self.location.origin)) {
           const clone = response.clone();
           caches.open(CACHE).then(cache => cache.put(event.request, clone));
         }
         return response;
-      });
-    })
+      })
+      .catch(() => caches.match(event.request))
   );
 });
